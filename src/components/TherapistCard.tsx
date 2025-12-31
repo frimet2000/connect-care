@@ -2,6 +2,7 @@ import { Star, MapPin, Clock, Zap, Home, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Therapist } from "@/data/therapists";
+import { useNavigate } from "react-router-dom";
 
 interface TherapistCardProps {
   therapist: Therapist;
@@ -9,6 +10,8 @@ interface TherapistCardProps {
 }
 
 const TherapistCard = ({ therapist, index }: TherapistCardProps) => {
+  const navigate = useNavigate();
+
   return (
     <div
       className="group bg-card rounded-2xl shadow-card hover:shadow-card-hover transition-all duration-300 overflow-hidden animate-fade-in"
@@ -125,13 +128,9 @@ const TherapistCard = ({ therapist, index }: TherapistCardProps) => {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between p-4 bg-muted/30 border-t border-border">
-        <div>
-          <span className="text-2xl font-bold text-foreground">₪{therapist.pricePerSession}</span>
-          <span className="text-sm text-muted-foreground mr-1">/ טיפול</span>
-        </div>
-        <Button variant="default" size="lg">
-          קביעת תור
+      <div className="flex items-center justify-end p-4 bg-muted/30 border-t border-border">
+        <Button variant="default" size="lg" onClick={() => navigate(`/therapist/${therapist.id}`)}>
+          צפייה בפרופיל
         </Button>
       </div>
     </div>

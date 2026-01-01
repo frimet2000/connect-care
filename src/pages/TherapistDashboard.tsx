@@ -496,8 +496,8 @@ const TherapistDashboard = () => {
         
       if (therapist) {
          try {
-           // Use RPC call to bypass potential table cache issues
-           const { error: rpcError } = await supabase.rpc('save_therapist_schedule', {
+           // Use v2 RPC call to bypass potential cache issues
+           const { error: rpcError } = await supabase.rpc('update_therapist_schedule_v2', {
              p_therapist_id: therapist.id,
              p_weekly_schedule: profile.weeklySchedule,
              p_scheduling_mode: profile.schedulingMode,

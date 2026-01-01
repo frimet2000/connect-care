@@ -80,16 +80,20 @@ async function verifyRPC() {
         return;
     }
 
-    // 4. Call the RPC function
-    console.log("Calling save_therapist_schedule RPC...");
+    // 4. Try direct UPSERT instead of RPC
+    console.log("Calling direct UPSERT to therapist_schedules...");
     const testSchedule = [{ day: 'sunday', active: true, slots: ['09:00', '10:00'] }];
     
-    const { data: rpcData, error: rpcError } = await supabase.rpc('save_therapist_schedule', {
-        p_therapist_id: therapistId,
-        p_weekly_schedule: testSchedule,
-        p_scheduling_mode: 'slots',
-        p_availability_text: 'Available on Sundays'
-    });
+    const { data: rpcData, error: rpcError } = await supabase
+        .from('therapist_schedules')
+        .upsert({
+            therapist_id: therapistId,
+            weekly_schedule: testSchedule,
+            scheduling_mode: 'slots',
+            availability_text: 'Available on Sundays',
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'therapist_id' })
+        .select();
 
     if (rpcError) {
         console.error("RPC Failed:", rpcError);

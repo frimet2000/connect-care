@@ -1,7 +1,7 @@
 import { ArrowUpDown, List } from "lucide-react";
 import TherapistCard from "@/components/TherapistCard";
 import SearchFilters from "@/components/SearchFilters";
-import { Therapist } from "@/data/therapists";
+import { Therapist, TimeRangeValue } from "@/data/therapists";
 import { useState } from "react";
 
 interface SearchResultsProps {
@@ -16,11 +16,13 @@ const SearchResults = ({ therapists, searchQuery }: SearchResultsProps) => {
   const [selectedSpecializations, setSelectedSpecializations] = useState<string[]>([]);
   const [homeVisitsOnly, setHomeVisitsOnly] = useState(false);
   const [selectedHealthFund, setSelectedHealthFund] = useState("all");
+  const [selectedTimeRanges, setSelectedTimeRanges] = useState<TimeRangeValue[]>([]);
 
   const handleReset = () => {
     setSelectedSpecializations([]);
     setHomeVisitsOnly(false);
     setSelectedHealthFund("all");
+    setSelectedTimeRanges([]);
   };
 
   // Filter therapists
@@ -38,7 +40,14 @@ const SearchResults = ({ therapists, searchQuery }: SearchResultsProps) => {
       !selectedSpecializations.some((spec) => t.specializations.includes(spec))
     )
       return false;
-      
+
+    if (selectedTimeRanges.length > 0) {
+      const hasTimeRange = t.weeklySchedule?.some(day =>
+        day.active && day.timeRanges?.some(range => selectedTimeRanges.includes(range))
+      );
+      if (!hasTimeRange) return false;
+    }
+
     return true;
   });
 
@@ -87,6 +96,8 @@ const SearchResults = ({ therapists, searchQuery }: SearchResultsProps) => {
           setSelectedHealthFund={setSelectedHealthFund}
           selectedSpecializations={selectedSpecializations}
           setSelectedSpecializations={setSelectedSpecializations}
+          selectedTimeRanges={selectedTimeRanges}
+          setSelectedTimeRanges={setSelectedTimeRanges}
           onReset={handleReset}
         />
 
@@ -104,7 +115,7 @@ const SearchResults = ({ therapists, searchQuery }: SearchResultsProps) => {
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">לא נמצאו תוצאות</h3>
             <p className="text-muted-foreground">נסו לשנות את הסינון או להרחיב את החיפוש</p>
-            <button 
+            <button
               onClick={handleReset}
               className="mt-4 text-primary hover:underline font-medium"
             >

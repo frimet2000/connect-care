@@ -47,8 +47,15 @@ const Index = () => {
 
       if (profilesError) throw profilesError;
 
+      // Fetch all schedules for these therapists
+      const { data: schedulesData } = await supabase
+        .from("therapist_schedules")
+        .select("*")
+        .in("therapist_id", therapistsData.map(t => t.id));
+
       const mappedTherapists: Therapist[] = therapistsData.map((t) => {
         const profile = profilesData?.find((p) => p.user_id === t.user_id);
+        const schedule = schedulesData?.find((s) => s.therapist_id === t.id);
         const professionLabel =
           professionOptions.find((p) => p.value === t.profession)?.label ||
           t.profession;
@@ -74,9 +81,11 @@ const Index = () => {
           acceptsBtl: t.accepts_btl || false,
           healthFunds: t.health_funds || [],
           phoneNumber: profile?.phone || "",
-          schedulingMode: "slots", // Default
           availableToday: t.available_today || false,
           instantBooking: t.instant_booking || false,
+          pricePerSession: t.price_per_session || 0,
+          targetAudience: t.target_audience || [],
+          weeklySchedule: (schedule?.weekly_schedule as any) || (t.weekly_schedule as any),
         };
       });
 

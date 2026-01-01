@@ -119,7 +119,6 @@ async function runVerification() {
         { day: 'monday', active: false, slots: [], hoursRange: '' }
     ];
     
-    const schedulingMode = 'slots';
     const availabilityText = 'Available on Sundays';
 
      // Try simple insert
@@ -128,7 +127,6 @@ async function runVerification() {
         .insert({
             therapist_id: therapist.id,
             weekly_schedule: testSchedule,
-            scheduling_mode: schedulingMode,
             availability_text: availabilityText
         })
         .select();
@@ -141,7 +139,6 @@ async function runVerification() {
             .upsert({
                 therapist_id: therapist.id,
                 weekly_schedule: testSchedule,
-                scheduling_mode: schedulingMode,
                 availability_text: availabilityText
             });
             
@@ -173,7 +170,6 @@ async function runVerification() {
         console.log("Verification Successful!");
         console.log("--------------------------------");
         console.log("Saved Schedule:", JSON.stringify(verifyData.weekly_schedule, null, 2));
-        console.log("Scheduling Mode:", verifyData.scheduling_mode);
         console.log("Availability Text:", verifyData.availability_text);
         console.log("--------------------------------");
     } else {

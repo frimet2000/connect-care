@@ -17,7 +17,10 @@ import {
   Phone,
   Mail,
   Globe,
-  User
+  User,
+  Sun,
+  Sunset,
+  Moon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -79,10 +82,9 @@ const TherapistProfile = () => {
 
       // 4. Determine schedule source
       let weeklySchedule: WeeklySchedule | null = 
-          (scheduleData?.weekly_schedule as WeeklySchedule) || 
-          (therapistData.weekly_schedule as WeeklySchedule);
+          (scheduleData?.weekly_schedule as unknown as WeeklySchedule) || 
+          (therapistData.weekly_schedule as unknown as WeeklySchedule);
       
-      let schedulingMode = scheduleData?.scheduling_mode || therapistData.scheduling_mode || 'slots';
       let availabilityText = scheduleData?.availability_text || therapistData.availability_text;
 
       if (weeklySchedule) {
@@ -161,10 +163,11 @@ const TherapistProfile = () => {
         acceptsBtl: therapistData.accepts_btl || false,
         healthFunds: therapistData.health_funds || [],
         phoneNumber: profileData.phone || "",
-        schedulingMode: schedulingMode as any,
         availableToday: therapistData.available_today || false,
         instantBooking: therapistData.instant_booking || false,
-        weeklySchedule
+        weeklySchedule,
+        pricePerSession: therapistData.price_per_session || 0,
+        targetAudience: therapistData.target_audience || [],
       };
 
       setTherapist(mappedTherapist);
@@ -456,44 +459,81 @@ const TherapistProfile = () => {
                 </div>
 
                 {/* Reception Times */}
-                {therapist.weeklySchedule && (
-                  <div className="bg-card rounded-2xl shadow-card p-6">
-                    <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
-                      <Clock className="w-5 h-5 text-primary" />
-                      מועדי קבלה
-                    </h2>
+                <div className="bg-card rounded-2xl shadow-card p-6">
+                  <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-primary" />
+                    מועדי קבלה
+                  </h2>
+                  
+                  {(!therapist.weeklySchedule || therapist.weeklySchedule.filter(d => d.active).length === 0) ? (
+                    <p className="text-muted-foreground text-center py-4">לא הוגדרו שעות קבלה</p>
+                  ) : (
                     <div className="space-y-3">
-                      {therapist.weeklySchedule.filter(d => d.active).map(day => (
-                        <div key={day.day} className="bg-muted/50 p-3 rounded-xl">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="font-semibold text-sm">
-                              {day.day === 'sunday' ? 'ראשון' : 
-                               day.day === 'monday' ? 'שני' : 
-                               day.day === 'tuesday' ? 'שלישי' : 
-                               day.day === 'wednesday' ? 'רביעי' : 
-                               day.day === 'thursday' ? 'חמישי' : 
-                               day.day === 'friday' ? 'שישי' : 'שבת'}
-                            </span>
-                          </div>
-                          {day.hoursRange && (
-                            <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
-                              <Clock className="w-3.5 h-3.5" />
-                              {day.hoursRange}
+                      {therapist.weeklySchedule.filter(d => d.active).map(day => {
+                        const isToday = new Date().getDay() === daysOfWeek.findIndex(d => d.id === day.day);
+                        const currentHour = new Date().getHours();
+                        
+                        return (
+                          <div key={day.day} className={`p-3 rounded-xl border transition-colors ${isToday ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-transparent'}`}>
+                            <div className="flex justify-between items-center mb-2">
+                              <span className={`font-semibold text-sm ${isToday ? 'text-primary' : ''}`}>
+                                {daysOfWeek.find(d => d.id === day.day)?.label}
+                              </span>
+                              {isToday && <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">היום</span>}
                             </div>
-                          )}
-                          {day.notes && (
-                            <p className="text-xs text-muted-foreground mt-1 border-t border-border/50 pt-1">
-                              {day.notes}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                      {therapist.weeklySchedule.filter(d => d.active).length === 0 && (
-                        <p className="text-muted-foreground">לא צוינו מועדי קבלה</p>
-                      )}
+                            
+                            {day.timeRanges && day.timeRanges.length > 0 ? (
+                              <div className="flex flex-wrap gap-2">
+                                {day.timeRanges.map(rangeId => {
+                                  const range = {
+                                    morning: { label: 'בוקר', time: '08:00-12:00', start: 8, end: 12, icon: Sun },
+                                    afternoon: { label: 'צהריים', time: '12:00-16:00', start: 12, end: 16, icon: Sunset },
+                                    evening: { label: 'ערב', time: '16:00-20:00', start: 16, end: 20, icon: Moon },
+                                  }[rangeId];
+                                  
+                                  if (!range) return null;
+                                  
+                                  const isActiveNow = isToday && currentHour >= range.start && currentHour < range.end;
+                                  const Icon = range.icon;
+                                  
+                                  return (
+                                    <div key={rangeId} className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded border ${isActiveNow ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400' : 'bg-background text-muted-foreground'}`}>
+                                      <Icon className="w-3 h-3" />
+                                      <span>{range.label}</span>
+                                      <span className="opacity-70 text-[10px] ltr:ml-1">({range.time})</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (day.slots && day.slots.length > 0) ? (
+                              <div className="flex flex-wrap gap-1">
+                                {day.slots.map(slot => (
+                                  <span key={slot} className="bg-secondary/20 px-1.5 py-0.5 rounded text-xs text-foreground">
+                                    {slot}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : day.hoursRange ? (
+                               <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
+                                 <Clock className="w-3.5 h-3.5" />
+                                 {day.hoursRange}
+                               </div>
+                            ) : (
+                               <div className="text-xs text-muted-foreground italic">אין שעות מוגדרות</div>
+                            )}
+                            
+                            {day.notes && (
+                              <p className="text-xs text-muted-foreground mt-2 border-t border-border/50 pt-1">
+                                {day.notes}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                    
-                    {therapist.availabilityText && 
+                  )}
+
+                  {therapist.availabilityText && 
                      therapist.availabilityText !== "זמין" && 
                      therapist.availabilityText !== "זמין היום" && (
                       <div className="mt-4 pt-4 border-t border-border/50">
@@ -506,8 +546,7 @@ const TherapistProfile = () => {
                         </p>
                       </div>
                     )}
-                  </div>
-                )}
+                </div>
 
                 {/* Health Funds */}
                 {therapist.healthFunds.length > 0 && (
@@ -581,7 +620,7 @@ const TherapistProfile = () => {
               {/* Right Column - Booking */}
               <div className="lg:col-span-1">
                 <div className="bg-card rounded-2xl shadow-card p-6 sticky top-24">
-                  {therapist.schedulingMode === 'slots' && therapist.weeklySchedule?.some(d => d.active && d.slots.length > 0) ? (
+                  {therapist.weeklySchedule?.some(d => d.active && d.slots.length > 0) ? (
                     <>
                       <h2 className="text-xl font-bold text-foreground mb-2 flex items-center gap-2">
                         <Calendar className="w-5 h-5 text-primary" />

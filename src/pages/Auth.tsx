@@ -29,12 +29,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 
+import { AvailabilitySettings } from "@/components/AvailabilitySettings";
 import {
   ageGroupOptions,
   professionOptions,
   specializationsByProfession,
   Profession,
-  SchedulingMode,
   generateEmptySchedule,
   AvailabilityStatus,
 } from "@/data/therapists";
@@ -56,6 +56,7 @@ const Auth = () => {
   const [streetAddress, setStreetAddress] = useState("");
   const [abroadCity, setAbroadCity] = useState("");
   const [abroadCountry, setAbroadCountry] = useState("");
+  const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -72,7 +73,6 @@ const Auth = () => {
     address: "",
     city: "",
     profession: "" as Profession | "",
-    schedulingMode: "slots" as SchedulingMode,
     targetAudience: [] as string[],
     specializations: [] as string[],
     hasHealthFundAgreement: "no",
@@ -83,6 +83,7 @@ const Auth = () => {
     yearsExperience: "" as string | number,
     availabilityStatus: "available_partial" as AvailabilityStatus,
     availabilityText: "",
+    weeklySchedule: generateEmptySchedule(),
   });
   const [errors, setErrors] = useState<{
     email?: string;
@@ -196,7 +197,6 @@ const Auth = () => {
               address: formData.address,
               city: formData.city,
               profession: formData.profession,
-              scheduling_mode: formData.schedulingMode,
               target_audience: formData.targetAudience,
               specializations: formData.specializations,
               phone_number: formData.phoneNumber,
@@ -243,10 +243,6 @@ const Auth = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSetSchedulingMode = (mode: SchedulingMode) => {
-    setFormData(prev => ({ ...prev, schedulingMode: mode }));
   };
 
   const handleChange = (field: string, value: any) => {
@@ -378,7 +374,6 @@ const Auth = () => {
       <AvailabilitySettings 
         isOpen={isAvailabilityOpen}
         onClose={() => setIsAvailabilityOpen(false)}
-        mode={formData.schedulingMode}
         schedule={formData.weeklySchedule}
         onSave={(newSchedule) => setFormData(prev => ({ ...prev, weeklySchedule: newSchedule }))}
       />
@@ -756,41 +751,17 @@ const Auth = () => {
                         </div>
 
                         <div className="space-y-2">
-                           <Label>אופן ניהול יומן</Label>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              <button
-                                type="button"
-                                onClick={() => handleSetSchedulingMode('slots')}
-                                className={`p-4 rounded-xl border text-right transition-all relative ${
-                                  formData.schedulingMode === 'slots'
-                                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                                    : 'border-border hover:border-primary/50'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <div className="font-medium">חשיפת יומן מלא</div>
-                                  {formData.schedulingMode === 'slots' && <CalendarIcon className="w-4 h-4 text-primary" />}
-                                </div>
-                                <div className="text-xs text-muted-foreground">תורים זמינים להזמנה</div>
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => handleOpenAvailability('reception_days')}
-                                className={`p-4 rounded-xl border text-right transition-all relative ${
-                                  formData.schedulingMode === 'reception_days'
-                                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                                    : 'border-border hover:border-primary/50'
-                                }`}
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <div className="font-medium">ימי קבלה בלבד</div>
-                                  {formData.schedulingMode === 'reception_days' && <CalendarIcon className="w-4 h-4 text-primary" />}
-                                </div>
-                                <div className="text-xs text-muted-foreground">הצגת זמני פעילות בלבד</div>
-                              </button>
-                            </div>
-                         </div>
+                           <Label>זמינות ויומן</Label>
+                           <Button
+                             type="button"
+                             variant="outline"
+                             onClick={() => setIsAvailabilityOpen(true)}
+                             className="w-full justify-start text-right font-normal"
+                           >
+                             <CalendarIcon className="w-4 h-4 ml-2" />
+                             הגדרת שעות זמינות
+                           </Button>
+                        </div>
                        </div>
 
                        <Separator />

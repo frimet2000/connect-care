@@ -1,10 +1,25 @@
 import { Button } from "@/components/ui/button";
-import { Heart, Menu, User, LayoutDashboard } from "lucide-react";
+import { Heart, Menu, User, LayoutDashboard, LogOut } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/");
+  };
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass-card border-b">
@@ -33,16 +48,45 @@ const Header = () => {
 
           {/* Desktop Auth Buttons */}
           <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/dashboard">
-                <LayoutDashboard className="w-4 h-4 ml-1" />
-                לוח בקרה
-              </Link>
-            </Button>
-            <Button variant="default" size="sm">
-              <User className="w-4 h-4 ml-1" />
-              הרשמה
-            </Button>
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
+                      <User className="w-4 h-4 text-primary" />
+                    </div>
+                    <span className="max-w-[100px] truncate">
+                      {user.user_metadata?.full_name || user.email?.split("@")[0]}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem asChild>
+                    <Link to="/dashboard" className="cursor-pointer">
+                      <LayoutDashboard className="w-4 h-4 ml-2" />
+                      לוח בקרה
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive">
+                    <LogOut className="w-4 h-4 ml-2" />
+                    התנתק
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/auth">התחברות</Link>
+                </Button>
+                <Button variant="default" size="sm" asChild>
+                  <Link to="/auth">
+                    <User className="w-4 h-4 ml-1" />
+                    הרשמה
+                  </Link>
+                </Button>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -70,12 +114,25 @@ const Header = () => {
                 אודות
               </a>
               <div className="flex gap-2 pt-2">
-                <Button variant="ghost" size="sm" className="flex-1" asChild>
-                  <Link to="/dashboard">לוח בקרה</Link>
-                </Button>
-                <Button variant="default" size="sm" className="flex-1">
-                  הרשמה
-                </Button>
+                {user ? (
+                  <>
+                    <Button variant="outline" size="sm" className="flex-1" asChild>
+                      <Link to="/dashboard">לוח בקרה</Link>
+                    </Button>
+                    <Button variant="ghost" size="sm" className="flex-1" onClick={handleSignOut}>
+                      התנתק
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="ghost" size="sm" className="flex-1" asChild>
+                      <Link to="/auth">התחברות</Link>
+                    </Button>
+                    <Button variant="default" size="sm" className="flex-1" asChild>
+                      <Link to="/auth">הרשמה</Link>
+                    </Button>
+                  </>
+                )}
               </div>
             </nav>
           </div>

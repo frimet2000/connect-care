@@ -5,7 +5,7 @@ CREATE TYPE public.profession_type AS ENUM ('speech_therapy', 'physiotherapy', '
 CREATE TYPE public.appointment_status AS ENUM ('pending', 'confirmed', 'completed', 'cancelled');
 
 -- Create enum for age range
-CREATE TYPE public.age_range AS ENUM ('infant', 'toddler', 'child_young', 'child_old', 'teen', 'adult');
+CREATE TYPE public.age_range AS ENUM ('infant', 'toddler', 'child_young', 'child_old', 'teen', 'adult', 'senior');
 
 -- Create profiles table for user data
 CREATE TABLE public.profiles (

@@ -1,5 +1,4 @@
-import { ArrowUpDown, Grid, List } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowUpDown, List } from "lucide-react";
 import TherapistCard from "@/components/TherapistCard";
 import SearchFilters from "@/components/SearchFilters";
 import { Therapist } from "@/data/therapists";
@@ -10,39 +9,44 @@ interface SearchResultsProps {
   searchQuery: string;
 }
 
-type SortOption = 'rating' | 'distance' | 'price_low' | 'price_high';
+type SortOption = 'distance';
 
 const SearchResults = ({ therapists, searchQuery }: SearchResultsProps) => {
-  const [sortBy, setSortBy] = useState<SortOption>('rating');
-  const [priceRange, setPriceRange] = useState<[number, number]>([100, 500]);
+  const [sortBy, setSortBy] = useState<SortOption>('distance');
   const [selectedSpecializations, setSelectedSpecializations] = useState<string[]>([]);
   const [homeVisitsOnly, setHomeVisitsOnly] = useState(false);
-  const [instantBookingOnly, setInstantBookingOnly] = useState(false);
+  const [selectedHealthFund, setSelectedHealthFund] = useState("all");
+
+  const handleReset = () => {
+    setSelectedSpecializations([]);
+    setHomeVisitsOnly(false);
+    setSelectedHealthFund("all");
+  };
 
   // Filter therapists
   const filteredTherapists = therapists.filter((t) => {
-    if (t.pricePerSession < priceRange[0] || t.pricePerSession > priceRange[1]) return false;
     if (homeVisitsOnly && !t.homeVisits) return false;
-    if (instantBookingOnly && !t.instantBooking) return false;
+
+    if (selectedHealthFund !== "all") {
+      if (!t.healthFunds || !t.healthFunds.includes(selectedHealthFund)) {
+        return false;
+      }
+    }
+
     if (
       selectedSpecializations.length > 0 &&
       !selectedSpecializations.some((spec) => t.specializations.includes(spec))
     )
       return false;
+      
     return true;
   });
 
   // Sort therapists
   const sortedTherapists = [...filteredTherapists].sort((a, b) => {
     switch (sortBy) {
-      case 'rating':
-        return b.rating - a.rating;
       case 'distance':
         return (a.distance || 999) - (b.distance || 999);
-      case 'price_low':
-        return a.pricePerSession - b.pricePerSession;
-      case 'price_high':
-        return b.pricePerSession - a.pricePerSession;
       default:
         return 0;
     }
@@ -70,24 +74,20 @@ const SearchResults = ({ therapists, searchQuery }: SearchResultsProps) => {
               onChange={(e) => setSortBy(e.target.value as SortOption)}
               className="h-10 px-3 rounded-lg border border-input bg-background text-foreground text-sm focus:ring-2 focus:ring-primary"
             >
-              <option value="rating">דירוג גבוה</option>
               <option value="distance">הכי קרוב</option>
-              <option value="price_low">מחיר נמוך לגבוה</option>
-              <option value="price_high">מחיר גבוה לנמוך</option>
             </select>
           </div>
         </div>
 
         {/* Filters */}
         <SearchFilters
-          priceRange={priceRange}
-          setPriceRange={setPriceRange}
-          selectedSpecializations={selectedSpecializations}
-          setSelectedSpecializations={setSelectedSpecializations}
           homeVisitsOnly={homeVisitsOnly}
           setHomeVisitsOnly={setHomeVisitsOnly}
-          instantBookingOnly={instantBookingOnly}
-          setInstantBookingOnly={setInstantBookingOnly}
+          selectedHealthFund={selectedHealthFund}
+          setSelectedHealthFund={setSelectedHealthFund}
+          selectedSpecializations={selectedSpecializations}
+          setSelectedSpecializations={setSelectedSpecializations}
+          onReset={handleReset}
         />
 
         {/* Results Grid */}
@@ -104,6 +104,12 @@ const SearchResults = ({ therapists, searchQuery }: SearchResultsProps) => {
             </div>
             <h3 className="text-lg font-semibold text-foreground mb-2">לא נמצאו תוצאות</h3>
             <p className="text-muted-foreground">נסו לשנות את הסינון או להרחיב את החיפוש</p>
+            <button 
+              onClick={handleReset}
+              className="mt-4 text-primary hover:underline font-medium"
+            >
+              אפס סינונים
+            </button>
           </div>
         )}
       </div>

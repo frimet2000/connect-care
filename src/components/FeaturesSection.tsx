@@ -1,4 +1,4 @@
-import { Search, Calendar, Shield, Star, Zap, Heart } from "lucide-react";
+import { Search, Calendar, Shield, Zap, Heart } from "lucide-react";
 
 const features = [
   {
@@ -12,12 +12,6 @@ const features = [
     title: "הזמנה מיידית",
     description: "תורים רבים זמינים להזמנה מיידית ללא המתנה לאישור",
     color: "bg-secondary/10 text-secondary",
-  },
-  {
-    icon: Star,
-    title: "דירוגים אמיתיים",
-    description: "קראו חוות דעת מהורים אחרים וקבלו החלטה מושכלת",
-    color: "bg-accent/10 text-accent",
   },
   {
     icon: Calendar,

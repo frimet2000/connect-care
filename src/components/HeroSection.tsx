@@ -1,4 +1,4 @@
-import { Search, MapPin, Sparkles } from "lucide-react";
+import { Search, MapPin, Sparkles, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { professionOptions } from "@/data/therapists";
 
@@ -7,6 +7,8 @@ interface HeroSectionProps {
   setSelectedProfession: (value: string) => void;
   location: string;
   setLocation: (value: string) => void;
+  therapistName: string;
+  setTherapistName: (value: string) => void;
   onSearch: () => void;
 }
 
@@ -15,6 +17,8 @@ const HeroSection = ({
   setSelectedProfession,
   location,
   setLocation,
+  therapistName,
+  setTherapistName,
   onSearch,
 }: HeroSectionProps) => {
   return (
@@ -72,6 +76,20 @@ const HeroSection = ({
                     </option>
                   ))}
                 </select>
+
+                <label className="block text-sm font-medium text-muted-foreground mb-2 mt-4 text-right">
+                  שם המטפל
+                </label>
+                <div className="relative">
+                  <User className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                  <input
+                    type="text"
+                    value={therapistName}
+                    onChange={(e) => setTherapistName(e.target.value)}
+                    placeholder="חפשו לפי שם מטפל"
+                    className="w-full h-12 pr-12 pl-4 rounded-xl border border-input bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
+                  />
+                </div>
               </div>
 
               {/* Location Input */}

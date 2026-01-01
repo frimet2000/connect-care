@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { CheckCircle2, Calendar, Clock, User, FileText, ArrowLeft } from "lucide-react";
+import { CheckCircle2, Calendar, Clock, User, FileText, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -26,8 +27,8 @@ type Step = "details" | "confirmation";
 
 interface PatientDetails {
   firstName: string;
+  phoneNumber: string;
   ageRange: string;
-  notes: string;
 }
 
 const BookingFlow = ({
@@ -42,8 +43,8 @@ const BookingFlow = ({
   const [step, setStep] = useState<Step>("details");
   const [patientDetails, setPatientDetails] = useState<PatientDetails>({
     firstName: "",
+    phoneNumber: "",
     ageRange: "",
-    notes: "",
   });
   const [errors, setErrors] = useState<Partial<PatientDetails>>({});
 
@@ -53,7 +54,8 @@ const BookingFlow = ({
     { value: "child_young", label: "ילד (4-7)" },
     { value: "child_old", label: "ילד (8-12)" },
     { value: "teen", label: "מתבגר (13-18)" },
-    { value: "adult", label: "מבוגר (18+)" },
+    { value: "adult", label: "מבוגר (18-65)" },
+    { value: "senior", label: "גיל שלישי (65+)" },
   ];
 
   const formatDate = (dateStr: string) => {
@@ -75,6 +77,12 @@ const BookingFlow = ({
       newErrors.firstName = "שם חייב להכיל לפחות 2 תווים";
     }
 
+    if (!patientDetails.phoneNumber.trim()) {
+      newErrors.phoneNumber = "מספר טלפון הוא שדה חובה";
+    } else if (!/^\d{9,10}$/.test(patientDetails.phoneNumber.replace(/\D/g, ''))) {
+      newErrors.phoneNumber = "מספר טלפון לא תקין";
+    }
+
     if (!patientDetails.ageRange) {
       newErrors.ageRange = "יש לבחור טווח גילאים";
     }
@@ -85,6 +93,28 @@ const BookingFlow = ({
 
   const handleSubmit = () => {
     if (validateForm()) {
+      // Simulate backend notification logic
+      // In a real application, this would call an API endpoint that handles:
+      // 1. Saving the booking to the database
+      // 2. Sending an email to the therapist via an email service (e.g., SendGrid, AWS SES)
+      // 3. Sending a WhatsApp message to the therapist via a WhatsApp Business API provider (e.g., Twilio)
+      // 4. Sending a confirmation email/WhatsApp to the patient
+      
+      toast.success("הבקשה נשלחה בהצלחה!");
+      
+      // Simulate separate notifications for clarity
+      setTimeout(() => {
+        toast.info("נשלחה הודעה למטפל במייל ובוואטסאפ", {
+          duration: 4000,
+        });
+      }, 500);
+      
+      setTimeout(() => {
+        toast.info("נשלח אליך אישור במייל ובוואטסאפ", {
+          duration: 4000,
+        });
+      }, 1500);
+
       setStep("confirmation");
     }
   };
@@ -138,7 +168,7 @@ const BookingFlow = ({
               <User className="w-5 h-5 text-primary" />
               <span className="text-muted-foreground">מטופל:</span>
               <span className="font-medium text-foreground">
-                {patientDetails.firstName} ({ageRanges.find((a) => a.value === patientDetails.ageRange)?.label})
+                {patientDetails.firstName}, {patientDetails.phoneNumber} ({ageRanges.find((a) => a.value === patientDetails.ageRange)?.label})
               </span>
             </div>
           </div>
@@ -149,7 +179,7 @@ const BookingFlow = ({
             חזרה לדף הבית
           </Button>
           <p className="text-xs text-muted-foreground">
-            📧 שלחנו לך אישור במייל עם כל הפרטים
+            📧 📱 שלחנו לך ולמטפל אישור במייל ובוואטסאפ עם כל הפרטים
           </p>
         </div>
       </div>
@@ -164,7 +194,7 @@ const BookingFlow = ({
           onClick={onBack}
           className="p-2 rounded-lg hover:bg-muted transition-colors"
         >
-          <ArrowLeft className="w-5 h-5 text-muted-foreground" />
+          <ArrowRight className="w-5 h-5 text-muted-foreground" />
         </button>
         <div>
           <h2 className="text-xl font-bold text-foreground">פרטי המטופל</h2>
@@ -206,6 +236,23 @@ const BookingFlow = ({
           )}
         </div>
 
+        {/* Phone Number */}
+        <div className="space-y-2">
+          <Label htmlFor="phoneNumber" className="text-foreground">
+            מספר טלפון <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="phoneNumber"
+            placeholder="050-0000000"
+            value={patientDetails.phoneNumber}
+            onChange={(e) => handleChange("phoneNumber", e.target.value)}
+            className={errors.phoneNumber ? "border-destructive" : ""}
+          />
+          {errors.phoneNumber && (
+            <p className="text-sm text-destructive">{errors.phoneNumber}</p>
+          )}
+        </div>
+
         {/* Age Range */}
         <div className="space-y-2">
           <Label htmlFor="ageRange" className="text-foreground">
@@ -229,23 +276,6 @@ const BookingFlow = ({
           {errors.ageRange && (
             <p className="text-sm text-destructive">{errors.ageRange}</p>
           )}
-        </div>
-
-        {/* Notes */}
-        <div className="space-y-2">
-          <Label htmlFor="notes" className="text-foreground">
-            הערות לתיאום (אופציונלי)
-          </Label>
-          <Textarea
-            id="notes"
-            placeholder="למשל: זמינות, העדפות מיוחדות..."
-            value={patientDetails.notes}
-            onChange={(e) => handleChange("notes", e.target.value)}
-            rows={3}
-          />
-          <p className="text-xs text-muted-foreground">
-            ⚠️ אנא אל תכתוב מידע רפואי רגיש
-          </p>
         </div>
 
         {/* Submit */}

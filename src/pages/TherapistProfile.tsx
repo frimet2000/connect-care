@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
-  Star,
   MapPin,
   Clock,
   Zap,
@@ -13,16 +12,27 @@ import {
   Award,
   GraduationCap,
   Heart,
-  ChevronLeft,
-  ChevronRight,
+  Share2,
+  Navigation,
+  Phone,
+  Mail,
+  Globe,
+  User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import BookingFlow from "@/components/BookingFlow";
-import { mockTherapists } from "@/data/therapists";
 import { Helmet } from "react-helmet";
+import { supabase } from "@/integrations/supabase/client";
+import { Therapist, professionOptions, WeeklySchedule, daysOfWeek } from "@/data/therapists";
+import { toast } from "@/hooks/use-toast";
 
 const TherapistProfile = () => {
   const { id } = useParams();
@@ -30,8 +40,144 @@ const TherapistProfile = () => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [showBookingFlow, setShowBookingFlow] = useState(false);
+  const [therapist, setTherapist] = useState<Therapist | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const therapist = mockTherapists.find((t) => t.id === id);
+  useEffect(() => {
+    if (id) {
+      fetchTherapist(id);
+    }
+  }, [id]);
+
+  const fetchTherapist = async (therapistId: string) => {
+    setLoading(true);
+    try {
+      // 1. Fetch therapist details
+      const { data: therapistData, error: therapistError } = await supabase
+        .from("therapists")
+        .select("*")
+        .eq("id", therapistId)
+        .single();
+
+      if (therapistError) throw therapistError;
+
+      // 2. Fetch profile details
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name, phone")
+        .eq("user_id", therapistData.user_id)
+        .single();
+
+      if (profileError) throw profileError;
+
+      // 3. Fetch availability (fallback if no weekly_schedule in therapistData)
+      let weeklySchedule: WeeklySchedule | null = therapistData.weekly_schedule as WeeklySchedule;
+
+      if (weeklySchedule) {
+        weeklySchedule = weeklySchedule.map(day => {
+          if (day.active && !day.hoursRange && day.slots && day.slots.length > 0) {
+             const sortedSlots = [...day.slots].sort();
+             const start = sortedSlots[0];
+             const end = sortedSlots[sortedSlots.length - 1];
+             // Simple range from first to last slot start time
+             return { ...day, hoursRange: `${start} - ${end}` };
+          }
+          return day;
+        });
+      }
+
+      if (!weeklySchedule) {
+        const { data: availabilityData, error: availabilityError } = await supabase
+          .from("availability")
+          .select("*")
+          .eq("therapist_id", therapistId);
+
+        if (availabilityError) throw availabilityError;
+
+        // Map availability to WeeklySchedule
+        weeklySchedule = daysOfWeek.map(dayObj => {
+          // Map day IDs (sunday..saturday) to DB day_of_week (0..6, assuming 0 is Sunday)
+          const dayIndex = daysOfWeek.findIndex(d => d.id === dayObj.id);
+          const dayAvailability = availabilityData?.find(a => a.day_of_week === dayIndex);
+
+          let slots: string[] = [];
+          let hoursRange = "";
+
+          if (dayAvailability && dayAvailability.is_active) {
+            // Generate slots every hour
+            const start = parseInt(dayAvailability.start_time.split(':')[0]);
+            const end = parseInt(dayAvailability.end_time.split(':')[0]);
+            hoursRange = `${dayAvailability.start_time.slice(0, 5)} - ${dayAvailability.end_time.slice(0, 5)}`;
+            
+            for (let h = start; h < end; h++) {
+              slots.push(`${h.toString().padStart(2, '0')}:00`);
+            }
+          }
+
+          return {
+            day: dayObj.id,
+            active: !!(dayAvailability && dayAvailability.is_active),
+            slots,
+            hoursRange,
+            notes: ""
+          };
+        });
+      }
+
+      const professionLabel =
+        professionOptions.find((p) => p.value === therapistData.profession)?.label ||
+        therapistData.profession;
+
+      const mappedTherapist: Therapist = {
+        id: therapistData.id,
+        name: profileData.full_name,
+        profession: therapistData.profession as any,
+        professionLabel,
+        avatar: therapistData.avatar_url || undefined,
+        yearsExperience: therapistData.years_experience || 0,
+        city: therapistData.city,
+        address: therapistData.address || undefined,
+        distance: 0,
+        sessionDuration: therapistData.session_duration_minutes || 45,
+        specializations: therapistData.specializations || [],
+        availabilityStatus: therapistData.available_today
+          ? "available_full"
+          : "available_partial",
+        availabilityText: therapistData.availability_text || (therapistData.available_today ? "זמין היום" : "זמין"),
+        bio: therapistData.bio || "",
+        homeVisits: therapistData.home_visits || false,
+        acceptsBtl: therapistData.accepts_btl || false,
+        healthFunds: therapistData.health_funds || [],
+        phoneNumber: profileData.phone || "",
+        schedulingMode: therapistData.scheduling_mode || "slots",
+        availableToday: therapistData.available_today || false,
+        instantBooking: therapistData.instant_booking || false,
+        weeklySchedule
+      };
+
+      setTherapist(mappedTherapist);
+    } catch (error) {
+      console.error("Error fetching therapist:", error);
+      toast({
+        variant: "destructive",
+        title: "שגיאה",
+        description: "לא ניתן היה לטעון את פרטי המטפל",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">טוען פרטי מטפל...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!therapist) {
     return (
@@ -66,41 +212,52 @@ const TherapistProfile = () => {
 
   const availableDays = getNextDays();
 
-  // Mock time slots
-  const timeSlots = [
-    { time: "09:00", available: true },
-    { time: "10:00", available: false },
-    { time: "11:00", available: true },
-    { time: "14:00", available: true },
-    { time: "15:00", available: true },
-    { time: "16:00", available: false },
-    { time: "17:00", available: true },
-  ];
+  const handleShare = (platform: 'whatsapp' | 'email') => {
+    const url = window.location.href;
+    const text = `היי, רציתי לשתף איתך את הפרופיל של ${therapist.name} ב-TherapyConnect:\n${url}`;
+    
+    if (platform === 'whatsapp') {
+      // Share with others (select contact)
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+      
+      // Track click for analytics
+      try {
+        const clicks = JSON.parse(localStorage.getItem('whatsapp_clicks') || '{}');
+        clicks[therapist.id] = (clicks[therapist.id] || 0) + 1;
+        localStorage.setItem('whatsapp_clicks', JSON.stringify(clicks));
+      } catch (e) {
+        console.error('Failed to track WhatsApp click', e);
+      }
+    } else {
+      window.open(`mailto:?subject=שיתוף פרופיל מטפל&body=${encodeURIComponent(text)}`, '_blank');
+    }
+  };
 
-  // Mock reviews
-  const reviews = [
-    {
-      id: 1,
-      name: "שרה כ.",
-      rating: 5,
-      date: "לפני שבוע",
-      text: "רונית היא מטפלת מדהימה! הילד שלי עשה התקדמות משמעותית תוך חודשיים בלבד. ממליצה בחום!",
-    },
-    {
-      id: 2,
-      name: "דוד מ.",
-      rating: 5,
-      date: "לפני חודש",
-      text: "גישה מקצועית וחמה. רואים שהיא אוהבת את העבודה שלה. התוצאות מדברות בעד עצמן.",
-    },
-    {
-      id: 3,
-      name: "מיכל א.",
-      rating: 4,
-      date: "לפני חודשיים",
-      text: "מרוצים מאוד מהטיפול. המיקום נוח והמרפאה נעימה. השיפור בהגייה של הילד ניכר.",
-    },
-  ];
+  const getSlotsForDate = (dateStr: string) => {
+    if (!therapist?.weeklySchedule) {
+      return [
+        { time: "09:00", available: true },
+        { time: "10:00", available: false },
+        { time: "11:00", available: true },
+        { time: "14:00", available: true },
+        { time: "15:00", available: true },
+        { time: "16:00", available: false },
+        { time: "17:00", available: true },
+      ];
+    }
+    
+    const date = new Date(dateStr);
+    const dayIndex = date.getDay();
+    const dayId = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayIndex];
+    
+    const daySchedule = therapist.weeklySchedule.find(d => d.day === dayId);
+    if (!daySchedule || !daySchedule.active) return [];
+    
+    return daySchedule.slots.map(slot => ({
+      time: slot,
+      available: true
+    })).sort((a, b) => a.time.localeCompare(b.time));
+  };
 
   return (
     <>
@@ -108,11 +265,11 @@ const TherapistProfile = () => {
         <title>{therapist.name} - {therapist.professionLabel} | TherapyConnect</title>
         <meta
           name="description"
-          content={`${therapist.name}, ${therapist.professionLabel} ב${therapist.city}. ${therapist.yearsExperience} שנות ניסיון. דירוג ${therapist.rating} מתוך 5.`}
+          content={`${therapist.name}, ${therapist.professionLabel} ב${therapist.city}. ${therapist.yearsExperience} שנות ניסיון.`}
         />
       </Helmet>
 
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-background text-right" dir="rtl">
         <Header />
 
         <main className="pt-20">
@@ -140,11 +297,17 @@ const TherapistProfile = () => {
                 <div className="flex flex-col md:flex-row gap-6">
                   {/* Avatar */}
                   <div className="relative shrink-0">
-                    <img
-                      src={therapist.avatar}
-                      alt={therapist.name}
-                      className="w-32 h-32 rounded-2xl object-cover ring-4 ring-card shadow-lg"
-                    />
+                    {therapist.avatar ? (
+                      <img
+                        src={therapist.avatar}
+                        alt={therapist.name}
+                        className="w-32 h-32 rounded-2xl object-cover ring-4 ring-card shadow-lg"
+                      />
+                    ) : (
+                      <div className="w-32 h-32 rounded-2xl bg-muted flex items-center justify-center ring-4 ring-card shadow-lg">
+                        <User className="w-16 h-16 text-muted-foreground/50" />
+                      </div>
+                    )}
                     {therapist.availableToday && (
                       <div className="absolute -bottom-2 -right-2 bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1">
                         <Zap className="w-3 h-3" />
@@ -157,22 +320,56 @@ const TherapistProfile = () => {
                   <div className="flex-1 pt-4">
                     <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
                       <div>
-                        <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-                          {therapist.name}
-                        </h1>
+                        <div className="flex items-center gap-3">
+                          <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+                            {therapist.name}
+                          </h1>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button variant="ghost" size="icon" className="rounded-full hover:bg-muted">
+                                <Share2 className="w-5 h-5 text-muted-foreground" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-2" align="start">
+                              <div className="flex flex-col gap-1">
+                                <Button variant="ghost" className="justify-start gap-2" onClick={() => handleShare('whatsapp')}>
+                                  WhatsApp
+                                </Button>
+                                <Button variant="ghost" className="justify-start gap-2" onClick={() => handleShare('email')}>
+                                  Email
+                                </Button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        </div>
                         <p className="text-lg text-primary font-medium mt-1">
                           {therapist.professionLabel}
                         </p>
 
+                        {/* Contact Info */}
+                        <div className="flex flex-col gap-2 mt-3 mb-4">
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Phone className="w-4 h-4" />
+                            <span dir="ltr">{therapist.phoneNumber}</span>
+                          </div>
+                          {therapist.email && (
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Mail className="w-4 h-4" />
+                              <span>{therapist.email}</span>
+                            </div>
+                          )}
+                          {therapist.website && (
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              <Globe className="w-4 h-4" />
+                              <a href={therapist.website} target="_blank" rel="noreferrer" className="hover:text-primary underline">
+                                לאתר המטפל
+                              </a>
+                            </div>
+                          )}
+                        </div>
+
                         {/* Quick Info */}
                         <div className="flex flex-wrap items-center gap-4 mt-3 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1">
-                            <Star className="w-5 h-5 fill-accent text-accent" />
-                            <span className="font-semibold text-foreground">
-                              {therapist.rating}
-                            </span>
-                            <span>({therapist.reviewCount} ביקורות)</span>
-                          </div>
                           <div className="flex items-center gap-1">
                             <MapPin className="w-4 h-4" />
                             <span>{therapist.city}</span>
@@ -246,6 +443,60 @@ const TherapistProfile = () => {
                   </div>
                 </div>
 
+                {/* Reception Times */}
+                {therapist.weeklySchedule && (
+                  <div className="bg-card rounded-2xl shadow-card p-6">
+                    <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-primary" />
+                      מועדי קבלה
+                    </h2>
+                    <div className="space-y-3">
+                      {therapist.weeklySchedule.filter(d => d.active).map(day => (
+                        <div key={day.day} className="bg-muted/50 p-3 rounded-xl">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-semibold text-sm">
+                              {day.day === 'sunday' ? 'ראשון' : 
+                               day.day === 'monday' ? 'שני' : 
+                               day.day === 'tuesday' ? 'שלישי' : 
+                               day.day === 'wednesday' ? 'רביעי' : 
+                               day.day === 'thursday' ? 'חמישי' : 
+                               day.day === 'friday' ? 'שישי' : 'שבת'}
+                            </span>
+                          </div>
+                          {day.hoursRange && (
+                            <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
+                              <Clock className="w-3.5 h-3.5" />
+                              {day.hoursRange}
+                            </div>
+                          )}
+                          {day.notes && (
+                            <p className="text-xs text-muted-foreground mt-1 border-t border-border/50 pt-1">
+                              {day.notes}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                      {therapist.weeklySchedule.filter(d => d.active).length === 0 && (
+                        <p className="text-muted-foreground">לא צוינו מועדי קבלה</p>
+                      )}
+                    </div>
+                    
+                    {therapist.availabilityText && 
+                     therapist.availabilityText !== "זמין" && 
+                     therapist.availabilityText !== "זמין היום" && (
+                      <div className="mt-4 pt-4 border-t border-border/50">
+                        <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                          <MessageCircle className="w-4 h-4 text-primary" />
+                          מידע נוסף על זמינות
+                        </h3>
+                        <p className="text-sm text-muted-foreground whitespace-pre-line">
+                          {therapist.availabilityText}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Health Funds */}
                 {therapist.healthFunds.length > 0 && (
                   <div className="bg-card rounded-2xl shadow-card p-6">
@@ -272,173 +523,200 @@ const TherapistProfile = () => {
                   </div>
                 )}
 
-                {/* Reviews */}
+                {/* Location */}
                 <div className="bg-card rounded-2xl shadow-card p-6">
-                  <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
-                      <MessageCircle className="w-5 h-5 text-primary" />
-                      ביקורות ({therapist.reviewCount})
-                    </h2>
-                    <div className="flex items-center gap-2">
-                      <Star className="w-5 h-5 fill-accent text-accent" />
-                      <span className="font-bold text-foreground">{therapist.rating}</span>
-                      <span className="text-muted-foreground">מתוך 5</span>
-                    </div>
+                  <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                    <MapPin className="w-5 h-5 text-primary" />
+                    מיקום ודרכי הגעה
+                  </h2>
+                  <p className="text-foreground font-medium mb-4">
+                    {therapist.address || therapist.city}
+                  </p>
+                  
+                  {/* Map */}
+                  <div className="w-full h-64 bg-muted rounded-xl overflow-hidden mb-4 relative">
+                    <iframe 
+                      width="100%" 
+                      height="100%" 
+                      frameBorder="0" 
+                      style={{ border: 0 }}
+                      src={`https://maps.google.com/maps?q=${encodeURIComponent(therapist.address || therapist.city)}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
+                      allowFullScreen
+                    ></iframe>
                   </div>
 
-                  <div className="space-y-4">
-                    {reviews.map((review) => (
-                      <div
-                        key={review.id}
-                        className="border-b border-border last:border-0 pb-4 last:pb-0"
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                              <span className="font-semibold text-muted-foreground">
-                                {review.name.charAt(0)}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="font-medium text-foreground">{review.name}</p>
-                              <p className="text-xs text-muted-foreground">{review.date}</p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-0.5">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                              <Star
-                                key={i}
-                                className={`w-4 h-4 ${
-                                  i < review.rating
-                                    ? "fill-accent text-accent"
-                                    : "text-muted-foreground"
-                                }`}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        <p className="text-muted-foreground text-sm">{review.text}</p>
-                      </div>
-                    ))}
+                  <div className="flex gap-3">
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 gap-2"
+                      onClick={() => window.open(`https://waze.com/ul?q=${encodeURIComponent(therapist.address || therapist.city)}`, '_blank')}
+                    >
+                      <Navigation className="w-4 h-4" />
+                      נווט עם Waze
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="flex-1 gap-2"
+                      onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(therapist.address || therapist.city)}`, '_blank')}
+                    >
+                      <MapPin className="w-4 h-4" />
+                      Google Maps
+                    </Button>
                   </div>
-
-                  <Button variant="outline" className="w-full mt-4">
-                    הצג את כל הביקורות
-                  </Button>
                 </div>
               </div>
 
               {/* Right Column - Booking */}
               <div className="lg:col-span-1">
                 <div className="bg-card rounded-2xl shadow-card p-6 sticky top-24">
-                  <h2 className="text-xl font-bold text-foreground mb-2 flex items-center gap-2">
-                    <Calendar className="w-5 h-5 text-primary" />
-                    קביעת תור
-                  </h2>
-                  <p className="text-sm text-muted-foreground mb-6">
-                    בחרו תאריך ושעה נוחים
-                  </p>
-
-                  {/* Date Selection */}
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium text-foreground mb-3">
-                      בחרו יום
-                    </label>
-                    <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2">
-                      {availableDays.map((day) => (
-                        <button
-                          key={day.date}
-                          onClick={() => {
-                            setSelectedDate(day.date);
-                            setSelectedTime(null);
-                          }}
-                          className={`flex-shrink-0 w-16 py-3 rounded-xl border-2 transition-all text-center ${
-                            selectedDate === day.date
-                              ? "border-primary bg-primary/10 text-primary"
-                              : "border-border hover:border-primary/50"
-                          }`}
-                        >
-                          <p className="text-xs font-medium">
-                            {day.isToday ? "היום" : day.dayName}
-                          </p>
-                          <p className="text-lg font-bold">{day.dayNum}</p>
-                          <p className="text-xs text-muted-foreground">{day.month}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Time Selection */}
-                  {selectedDate && (
-                    <div className="mb-6 animate-fade-in">
-                      <label className="block text-sm font-medium text-foreground mb-3">
-                        בחרו שעה
-                      </label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {timeSlots.map((slot) => (
-                          <button
-                            key={slot.time}
-                            onClick={() => slot.available && setSelectedTime(slot.time)}
-                            disabled={!slot.available}
-                            className={`py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${
-                              !slot.available
-                                ? "border-border bg-muted/50 text-muted-foreground cursor-not-allowed line-through"
-                                : selectedTime === slot.time
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border hover:border-primary/50"
-                            }`}
-                          >
-                            {slot.time}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Session Info */}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-                    <Clock className="w-4 h-4" />
-                    <span>משך הטיפול: {therapist.sessionDuration} דקות</span>
-                  </div>
-
-                  {/* Book Button */}
-                  {!showBookingFlow ? (
+                  {therapist.schedulingMode === 'slots' && therapist.weeklySchedule?.some(d => d.active && d.slots.length > 0) ? (
                     <>
-                      <Button
-                        variant="gradient"
-                        size="xl"
-                        className="w-full"
-                        disabled={!selectedDate || !selectedTime}
-                        onClick={() => setShowBookingFlow(true)}
-                      >
-                        {therapist.instantBooking ? "הזמן עכשיו" : "בקש תור"}
-                      </Button>
+                      <h2 className="text-xl font-bold text-foreground mb-2 flex items-center gap-2">
+                        <Calendar className="w-5 h-5 text-primary" />
+                        קביעת תור
+                      </h2>
+                      <p className="text-sm text-muted-foreground mb-6">
+                        בחרו תאריך ושעה נוחים
+                      </p>
 
-                      {therapist.instantBooking && (
-                        <p className="text-xs text-center text-secondary mt-3 flex items-center justify-center gap-1">
-                          <Zap className="w-3 h-3" />
-                          התור יאושר מיידית
-                        </p>
+                      {/* Date Selection */}
+                      <div className="mb-6">
+                        <label className="block text-sm font-medium text-foreground mb-3">
+                          בחרו יום
+                        </label>
+                        <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2">
+                          {availableDays.map((day) => (
+                            <button
+                              key={day.date}
+                              onClick={() => {
+                                setSelectedDate(day.date);
+                                setSelectedTime(null);
+                              }}
+                              className={`flex-shrink-0 w-16 py-3 rounded-xl border-2 transition-all text-center ${
+                                selectedDate === day.date
+                                  ? "border-primary bg-primary/10 text-primary"
+                                  : "border-border hover:border-primary/50"
+                              }`}
+                            >
+                              <p className="text-xs font-medium">
+                                {day.isToday ? "היום" : day.dayName}
+                              </p>
+                              <p className="text-lg font-bold">{day.dayNum}</p>
+                              <p className="text-xs text-muted-foreground">{day.month}</p>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Time Selection */}
+                      {selectedDate && (
+                        <div className="mb-6 animate-fade-in">
+                          <label className="block text-sm font-medium text-foreground mb-3">
+                            בחרו שעה
+                          </label>
+                          {getSlotsForDate(selectedDate).length > 0 ? (
+                            <div className="grid grid-cols-3 gap-2">
+                              {getSlotsForDate(selectedDate).map((slot) => (
+                                <button
+                                  key={slot.time}
+                                  onClick={() => slot.available && setSelectedTime(slot.time)}
+                                  disabled={!slot.available}
+                                  className={`py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${
+                                    !slot.available
+                                      ? "border-border bg-muted/50 text-muted-foreground cursor-not-allowed line-through"
+                                      : selectedTime === slot.time
+                                      ? "border-primary bg-primary/10 text-primary"
+                                      : "border-border hover:border-primary/50"
+                                  }`}
+                                >
+                                  {slot.time}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-4 bg-muted/30 rounded-lg">
+                              <p className="text-muted-foreground">אין תורים פנויים ביום זה</p>
+                              {therapist.weeklySchedule?.find(d => d.day === ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][new Date(selectedDate).getDay()])?.notes && (
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {therapist.weeklySchedule.find(d => d.day === ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][new Date(selectedDate).getDay()])?.notes}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       )}
 
-                      {/* Contact */}
-                      <div className="mt-6 pt-6 border-t border-border">
-                        <Button variant="outline" className="w-full">
-                          <MessageCircle className="w-4 h-4 ml-2" />
-                          שלח הודעה
+                      {/* Session Info */}
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
+                        <Clock className="w-4 h-4" />
+                        <span>משך הטיפול: {therapist.sessionDuration} דקות</span>
+                      </div>
+
+                      {/* Book Button */}
+                      {!showBookingFlow ? (
+                        <>
+                          <Button
+                            variant="gradient"
+                            size="xl"
+                            className="w-full"
+                            disabled={!selectedDate || !selectedTime}
+                            onClick={() => setShowBookingFlow(true)}
+                          >
+                            {therapist.instantBooking ? "הזמן עכשיו" : "בקש תור"}
+                          </Button>
+
+                          {therapist.instantBooking && (
+                            <p className="text-xs text-center text-secondary mt-3 flex items-center justify-center gap-1">
+                              <Zap className="w-3 h-3" />
+                              התור יאושר מיידית
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <BookingFlow
+                          therapistName={therapist.name}
+                          selectedDate={selectedDate!}
+                          selectedTime={selectedTime!}
+                          sessionDuration={therapist.sessionDuration}
+                          instantBooking={therapist.instantBooking || false}
+                          onClose={() => navigate("/")}
+                          onBack={() => setShowBookingFlow(false)}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                        <MessageCircle className="w-5 h-5 text-primary" />
+                        יצירת קשר
+                      </h2>
+                      <p className="text-muted-foreground mb-6">
+                        המטפל זמין לפניות טלפוניות או בהודעה.
+                        ניתן לראות את מועדי הקבלה בפרטי הפרופיל.
+                      </p>
+                      
+                      <div className="space-y-3">
+                        <Button 
+                          variant="gradient" 
+                          size="xl" 
+                          className="w-full gap-2"
+                          onClick={() => window.open(`tel:${therapist.phoneNumber}`, '_self')}
+                        >
+                          <Phone className="w-5 h-5" />
+                          חייג למטפל
+                        </Button>
+                        
+                        <Button 
+                          variant="outline" 
+                          size="xl" 
+                          className="w-full gap-2"
+                          onClick={() => handleShare('whatsapp')}
+                        >
+                          <MessageCircle className="w-5 h-5" />
+                          שלח הודעה ב-WhatsApp
                         </Button>
                       </div>
                     </>
-                  ) : (
-                    <BookingFlow
-                      therapistName={therapist.name}
-                      selectedDate={selectedDate!}
-                      selectedTime={selectedTime!}
-                      sessionDuration={therapist.sessionDuration}
-                      instantBooking={therapist.instantBooking}
-                      onClose={() => navigate("/")}
-                      onBack={() => setShowBookingFlow(false)}
-                    />
                   )}
                 </div>
               </div>

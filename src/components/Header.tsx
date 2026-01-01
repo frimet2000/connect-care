@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { Heart, Menu, User, LayoutDashboard, LogOut } from "lucide-react";
-import { useState } from "react";
+import { Heart, Menu, User, LayoutDashboard, LogOut, ShieldAlert } from "lucide-react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,8 +14,36 @@ import {
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      // Check session storage first
+      if (sessionStorage.getItem("isAdminAuthenticated") === "true") {
+        setIsAdmin(true);
+        return;
+      }
+
+      if (!user) {
+        setIsAdmin(false);
+        return;
+      }
+
+      const { data } = await supabase
+        .from('profiles')
+        .select('user_type')
+        .eq('user_id', user.id)
+        .single();
+
+      if (data?.user_type === 'admin') {
+        setIsAdmin(true);
+      }
+    };
+
+    checkAdminStatus();
+  }, [user]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -61,31 +90,31 @@ const Header = () => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
+                  {isAdmin && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/admin/dashboard" className="cursor-pointer flex items-center gap-2 text-primary font-medium">
+                        <ShieldAlert className="w-4 h-4" />
+                        ניהול מערכת
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem asChild>
-                    <Link to="/dashboard" className="cursor-pointer">
-                      <LayoutDashboard className="w-4 h-4 ml-2" />
+                    <Link to="/dashboard" className="cursor-pointer flex items-center gap-2">
+                      <LayoutDashboard className="w-4 h-4" />
                       לוח בקרה
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive">
-                    <LogOut className="w-4 h-4 ml-2" />
+                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive flex items-center gap-2">
+                    <LogOut className="w-4 h-4" />
                     התנתק
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <>
-                <Button variant="ghost" size="sm" asChild>
-                  <Link to="/auth">התחברות</Link>
-                </Button>
-                <Button variant="default" size="sm" asChild>
-                  <Link to="/auth">
-                    <User className="w-4 h-4 ml-1" />
-                    הרשמה
-                  </Link>
-                </Button>
-              </>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/auth">כניסת מטפלים</Link>
+              </Button>
             )}
           </div>
 
@@ -124,14 +153,9 @@ const Header = () => {
                     </Button>
                   </>
                 ) : (
-                  <>
-                    <Button variant="ghost" size="sm" className="flex-1" asChild>
-                      <Link to="/auth">התחברות</Link>
-                    </Button>
-                    <Button variant="default" size="sm" className="flex-1" asChild>
-                      <Link to="/auth">הרשמה</Link>
-                    </Button>
-                  </>
+                  <Button variant="ghost" size="sm" className="flex-1" asChild>
+                    <Link to="/auth">כניסת מטפלים</Link>
+                  </Button>
                 )}
               </div>
             </nav>

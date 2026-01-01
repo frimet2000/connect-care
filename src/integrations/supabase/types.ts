@@ -195,6 +195,44 @@ export type Database = {
           },
         ]
       }
+      therapist_schedules: {
+        Row: {
+          id: string
+          therapist_id: string
+          weekly_schedule: Json | null
+          scheduling_mode: string | null
+          availability_text: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          therapist_id: string
+          weekly_schedule?: Json | null
+          scheduling_mode?: string | null
+          availability_text?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          therapist_id?: string
+          weekly_schedule?: Json | null
+          scheduling_mode?: string | null
+          availability_text?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "therapist_schedules_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: true
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       therapists: {
         Row: {
           accepts_btl: boolean | null
@@ -222,6 +260,9 @@ export type Database = {
           updated_at: string
           user_id: string
           years_experience: number | null
+          weekly_schedule: Json | null
+          scheduling_mode: string | null
+          availability_text: string | null
         }
         Insert: {
           accepts_btl?: boolean | null
@@ -249,6 +290,9 @@ export type Database = {
           updated_at?: string
           user_id: string
           years_experience?: number | null
+          weekly_schedule?: Json | null
+          scheduling_mode?: string | null
+          availability_text?: string | null
         }
         Update: {
           accepts_btl?: boolean | null
@@ -276,6 +320,9 @@ export type Database = {
           updated_at?: string
           user_id?: string
           years_experience?: number | null
+          weekly_schedule?: Json | null
+          scheduling_mode?: string | null
+          availability_text?: string | null
         }
         Relationships: []
       }
@@ -294,11 +341,14 @@ export type Database = {
         | "child_old"
         | "teen"
         | "adult"
+        | "senior"
       appointment_status: "pending" | "confirmed" | "completed" | "cancelled"
       profession_type:
         | "speech_therapy"
         | "physiotherapy"
         | "occupational_therapy"
+        | "nutrition"
+        | "psychotherapy"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -433,6 +483,7 @@ export const Constants = {
         "child_old",
         "teen",
         "adult",
+        "senior",
       ],
       appointment_status: ["pending", "confirmed", "completed", "cancelled"],
       profession_type: [

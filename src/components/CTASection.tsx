@@ -38,7 +38,7 @@ const CTASection = () => {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-4 mt-12 text-center">
+          <div className="grid grid-cols-2 gap-4 mt-12 text-center">
             <div>
               <div className="text-4xl font-bold text-primary-foreground">500+</div>
               <div className="text-primary-foreground/70 text-sm mt-1">מטפלים פעילים</div>
@@ -46,10 +46,6 @@ const CTASection = () => {
             <div>
               <div className="text-4xl font-bold text-primary-foreground">10K+</div>
               <div className="text-primary-foreground/70 text-sm mt-1">תורים שנקבעו</div>
-            </div>
-            <div>
-              <div className="text-4xl font-bold text-primary-foreground">4.8</div>
-              <div className="text-primary-foreground/70 text-sm mt-1">דירוג ממוצע</div>
             </div>
           </div>
         </div>

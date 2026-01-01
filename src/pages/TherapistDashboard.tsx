@@ -461,6 +461,7 @@ const TherapistDashboard = () => {
 
       // Update therapists table
       // Note: we only update fields that exist in the table schema
+      // We removed schedule fields from here to avoid schema errors if columns don't exist
       const { error: therapistError } = await supabase
         .from('therapists')
         .upsert({
@@ -476,17 +477,45 @@ const TherapistDashboard = () => {
           health_funds: profile.healthFunds,
           avatar_url: profile.profileImage, // Note: storing base64/url directly for now
           is_active: true,
-          weekly_schedule: profile.weeklySchedule,
-          scheduling_mode: profile.schedulingMode,
-          availability_text: profile.availabilityText,
-          // Add default values for required fields if missing
+          // weekly_schedule: profile.weeklySchedule, // REMOVED: Saved in dedicated table
+          // scheduling_mode: profile.schedulingMode, // REMOVED: Saved in dedicated table
+          // availability_text: profile.availabilityText, // REMOVED: Saved in dedicated table
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
 
       if (therapistError) {
         console.error('Error updating therapists:', therapistError);
-        // We don't throw here to ensure the user gets a success message if at least metadata was saved,
-        // but we log it. In a real app we might want to show a warning.
+      }
+
+      // Also update the schedule table using the secure RPC function
+      const { data: therapist } = await supabase
+        .from('therapists')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (therapist) {
+         try {
+           // Use RPC call to bypass potential table cache issues
+           const { error: rpcError } = await supabase.rpc('save_therapist_schedule', {
+             p_therapist_id: therapist.id,
+             p_weekly_schedule: profile.weeklySchedule,
+             p_scheduling_mode: profile.schedulingMode,
+             p_availability_text: profile.availabilityText
+           });
+
+           if (rpcError) {
+             console.error('RPC Error saving schedule:', rpcError);
+             throw rpcError;
+           }
+         } catch (err) {
+            console.error('Schedule save failed:', err);
+            toast({
+              variant: "destructive",
+              title: "שגיאה בשמירת היומן",
+              description: "הפרופיל נשמר אך ייתכן שהיומן לא התעדכן. נסה שוב.",
+            });
+         }
       }
 
       toast({

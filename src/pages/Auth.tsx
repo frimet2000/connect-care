@@ -39,7 +39,6 @@ import {
   AvailabilityStatus,
 } from "@/data/therapists";
 import { israelCities } from "@/data/cities";
-import { AvailabilitySettings } from "@/components/AvailabilitySettings";
 
 const emailSchema = z.string().email("כתובת מייל לא תקינה");
 const passwordSchema = z.string().min(6, "סיסמה חייבת להכיל לפחות 6 תווים");
@@ -49,7 +48,6 @@ const Auth = () => {
   const { toast } = useToast();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const [isAvailabilityOpen, setIsAvailabilityOpen] = useState(false);
   
   // Local state for address handling
   const [isAbroad, setIsAbroad] = useState(false);
@@ -77,7 +75,6 @@ const Auth = () => {
     schedulingMode: "slots" as SchedulingMode,
     targetAudience: [] as string[],
     specializations: [] as string[],
-    weeklySchedule: generateEmptySchedule(),
     hasHealthFundAgreement: "no",
     healthFunds: [] as string[],
     hasPrivateInsuranceAgreement: "no",
@@ -210,14 +207,15 @@ const Auth = () => {
               years_experience: Number(formData.yearsExperience),
               license_number: formData.licenseNumber,
               treats_remotely: formData.treatsRemotely,
-              weekly_schedule: formData.weeklySchedule,
+              // We'll save schedule later in dashboard or via trigger if possible
+              // weekly_schedule: formData.weeklySchedule, 
               has_health_fund_agreement: formData.hasHealthFundAgreement,
               health_funds: formData.healthFunds,
               has_private_insurance_agreement: formData.hasPrivateInsuranceAgreement,
               private_insurance_name: formData.privateInsuranceName,
               profile_image: formData.profileImage,
-              availability_status: formData.availabilityStatus,
-              availability_text: formData.availabilityText,
+              // availability_status: formData.availabilityStatus,
+              // availability_text: formData.availabilityText,
             },
           },
         });
@@ -247,9 +245,8 @@ const Auth = () => {
     }
   };
 
-  const handleOpenAvailability = (mode: SchedulingMode) => {
+  const handleSetSchedulingMode = (mode: SchedulingMode) => {
     setFormData(prev => ({ ...prev, schedulingMode: mode }));
-    setIsAvailabilityOpen(true);
   };
 
   const handleChange = (field: string, value: any) => {
@@ -763,7 +760,7 @@ const Auth = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               <button
                                 type="button"
-                                onClick={() => handleOpenAvailability('slots')}
+                                onClick={() => handleSetSchedulingMode('slots')}
                                 className={`p-4 rounded-xl border text-right transition-all relative ${
                                   formData.schedulingMode === 'slots'
                                     ? 'border-primary bg-primary/5 ring-1 ring-primary'

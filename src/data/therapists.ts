@@ -1,4 +1,3 @@
-
 export type Profession = 'speech_therapy' | 'physiotherapy' | 'occupational_therapy' | 'nutrition' | 'psychotherapy';
 
 export type AgeGroup = 'infant' | 'toddler' | 'child_5_9' | 'child_10_13' | 'teen' | 'adult' | 'senior';
@@ -22,13 +21,15 @@ export interface Therapist {
   name: string;
   profession: Profession;
   professionLabel: string;
-  avatar?: string;
+  avatar: string;
   yearsExperience: number;
   city: string;
   address?: string;
   distance?: number;
+  pricePerSession: number;
   sessionDuration: number;
   specializations: string[];
+  targetAudience: AgeGroup[];
   availabilityStatus: AvailabilityStatus;
   availabilityText?: string;
   bio: string;
@@ -134,4 +135,3 @@ export const healthFundOptions = [
 ];
 
 export const mockTherapists: Therapist[] = [];
-

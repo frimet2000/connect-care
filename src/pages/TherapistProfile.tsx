@@ -70,8 +70,20 @@ const TherapistProfile = () => {
 
       if (profileError) throw profileError;
 
-      // 3. Fetch availability (fallback if no weekly_schedule in therapistData)
-      let weeklySchedule: WeeklySchedule | null = therapistData.weekly_schedule as WeeklySchedule;
+      // 3. Fetch dedicated schedule (preferred)
+      const { data: scheduleData } = await supabase
+        .from("therapist_schedules")
+        .select("*")
+        .eq("therapist_id", therapistId)
+        .maybeSingle();
+
+      // 4. Determine schedule source
+      let weeklySchedule: WeeklySchedule | null = 
+          (scheduleData?.weekly_schedule as WeeklySchedule) || 
+          (therapistData.weekly_schedule as WeeklySchedule);
+      
+      let schedulingMode = scheduleData?.scheduling_mode || therapistData.scheduling_mode || 'slots';
+      let availabilityText = scheduleData?.availability_text || therapistData.availability_text;
 
       if (weeklySchedule) {
         weeklySchedule = weeklySchedule.map(day => {
@@ -143,13 +155,13 @@ const TherapistProfile = () => {
         availabilityStatus: therapistData.available_today
           ? "available_full"
           : "available_partial",
-        availabilityText: therapistData.availability_text || (therapistData.available_today ? "זמין היום" : "זמין"),
+        availabilityText: availabilityText || (therapistData.available_today ? "זמין היום" : "זמין"),
         bio: therapistData.bio || "",
         homeVisits: therapistData.home_visits || false,
         acceptsBtl: therapistData.accepts_btl || false,
         healthFunds: therapistData.health_funds || [],
         phoneNumber: profileData.phone || "",
-        schedulingMode: therapistData.scheduling_mode || "slots",
+        schedulingMode: schedulingMode as any,
         availableToday: therapistData.available_today || false,
         instantBooking: therapistData.instant_booking || false,
         weeklySchedule

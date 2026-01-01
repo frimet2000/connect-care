@@ -137,7 +137,14 @@ const TherapistProfile = () => {
         return day;
       });
 
-      let availabilityText = scheduleData?.availability_text || therapistData.availability_text;
+      // 5. Fetch general info text from new table
+      const { data: infoData } = await (supabase as any)
+        .from("therapist_availability_info")
+        .select("*")
+        .eq("therapist_id", therapistId)
+        .maybeSingle();
+
+      let availabilityText = infoData?.free_text || "";
 
       const professionLabel =
         professionOptions.find((p) => p.value === therapistData.profession)?.label ||

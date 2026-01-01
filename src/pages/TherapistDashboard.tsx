@@ -229,11 +229,17 @@ const TherapistDashboard = () => {
           .eq("user_id", user.id)
           .single();
 
-        // Fetch availability slots from the NEW normalized table
+        // Fetch availability slots and general info from the NEW normalized tables
         const { data: slotData } = await (supabase as any)
           .from("therapist_availability_slots")
           .select("*")
           .eq("therapist_id", therapistData?.id);
+
+        const { data: infoData } = await (supabase as any)
+          .from("therapist_availability_info")
+          .select("*")
+          .eq("therapist_id", therapistData?.id)
+          .maybeSingle();
 
         if (profileData && therapistData) {
           // Reconstruct the WeeklySchedule object from the normalized slots
@@ -246,7 +252,7 @@ const TherapistDashboard = () => {
                   ...day,
                   active: true,
                   timeRanges: daySlots.map(s => s.time_range),
-                  notes: daySlots[0]?.notes || "" // Assuming one note per day
+                  notes: daySlots[0]?.notes || ""
                 };
               }
               return day;
@@ -270,7 +276,7 @@ const TherapistDashboard = () => {
             healthFunds: therapistData.health_funds || prev.healthFunds,
             hasHealthFundAgreement: (therapistData.health_funds && therapistData.health_funds.length > 0) ? "yes" : "no",
             weeklySchedule: loadedSchedule,
-            availabilityText: therapistData.availability_text || "",
+            availabilityText: infoData?.free_text || "",
           }));
 
           // Set local state for address
@@ -401,7 +407,7 @@ const TherapistDashboard = () => {
 
       if (profileError) throw profileError;
 
-      // 2. Update therapist basic info
+      // 2. Update therapist basic info (removed cursed availability_text)
       const { data: therapistData, error: therapistError } = await supabase
         .from('therapists')
         .upsert({
@@ -416,7 +422,6 @@ const TherapistDashboard = () => {
           session_duration_minutes: profile.sessionDuration,
           health_funds: profile.healthFunds,
           avatar_url: profile.profileImage,
-          availability_text: profile.availabilityText,
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' })
         .select('id')
@@ -424,8 +429,20 @@ const TherapistDashboard = () => {
 
       if (therapistError) throw therapistError;
 
-      // 3. Update Availability Slots (Delete old, insert new)
       const therapistId = therapistData.id;
+
+      // 3. Update Availability Info (separate table to avoid cache issue)
+      const { error: infoError } = await (supabase as any)
+        .from('therapist_availability_info')
+        .upsert({
+          therapist_id: therapistId,
+          free_text: profile.availabilityText,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'therapist_id' });
+
+      if (infoError) throw infoError;
+
+      // 4. Update Availability Slots (Delete old, insert new)
 
       // Wipe existing
       const { error: deleteError } = await (supabase as any)

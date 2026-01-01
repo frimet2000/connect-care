@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import BookingFlow from "@/components/BookingFlow";
 import { mockTherapists } from "@/data/therapists";
 import { Helmet } from "react-helmet";
 
@@ -28,6 +29,7 @@ const TherapistProfile = () => {
   const navigate = useNavigate();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [showBookingFlow, setShowBookingFlow] = useState(false);
 
   const therapist = mockTherapists.find((t) => t.id === id);
 
@@ -400,29 +402,44 @@ const TherapistProfile = () => {
                   </div>
 
                   {/* Book Button */}
-                  <Button
-                    variant="gradient"
-                    size="xl"
-                    className="w-full"
-                    disabled={!selectedDate || !selectedTime}
-                  >
-                    {therapist.instantBooking ? "הזמן עכשיו" : "בקש תור"}
-                  </Button>
+                  {!showBookingFlow ? (
+                    <>
+                      <Button
+                        variant="gradient"
+                        size="xl"
+                        className="w-full"
+                        disabled={!selectedDate || !selectedTime}
+                        onClick={() => setShowBookingFlow(true)}
+                      >
+                        {therapist.instantBooking ? "הזמן עכשיו" : "בקש תור"}
+                      </Button>
 
-                  {therapist.instantBooking && (
-                    <p className="text-xs text-center text-secondary mt-3 flex items-center justify-center gap-1">
-                      <Zap className="w-3 h-3" />
-                      התור יאושר מיידית
-                    </p>
+                      {therapist.instantBooking && (
+                        <p className="text-xs text-center text-secondary mt-3 flex items-center justify-center gap-1">
+                          <Zap className="w-3 h-3" />
+                          התור יאושר מיידית
+                        </p>
+                      )}
+
+                      {/* Contact */}
+                      <div className="mt-6 pt-6 border-t border-border">
+                        <Button variant="outline" className="w-full">
+                          <MessageCircle className="w-4 h-4 ml-2" />
+                          שלח הודעה
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <BookingFlow
+                      therapistName={therapist.name}
+                      selectedDate={selectedDate!}
+                      selectedTime={selectedTime!}
+                      sessionDuration={therapist.sessionDuration}
+                      instantBooking={therapist.instantBooking}
+                      onClose={() => navigate("/")}
+                      onBack={() => setShowBookingFlow(false)}
+                    />
                   )}
-
-                  {/* Contact */}
-                  <div className="mt-6 pt-6 border-t border-border">
-                    <Button variant="outline" className="w-full">
-                      <MessageCircle className="w-4 h-4 ml-2" />
-                      שלח הודעה
-                    </Button>
-                  </div>
                 </div>
               </div>
             </div>

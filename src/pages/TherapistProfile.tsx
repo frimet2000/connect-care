@@ -76,7 +76,7 @@ const TherapistProfile = () => {
       // 3. Fetch dedicated schedule (preferred, handle 404 gracefully)
       let scheduleData = null;
       // 3. Fetch availability slots from the NEW normalized table
-      const { data: slotData, error: slotErr } = await supabase
+      const { data: slotData, error: slotErr } = await (supabase as any)
         .from("therapist_availability_slots")
         .select("*")
         .eq("therapist_id", therapistId);

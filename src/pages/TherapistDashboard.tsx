@@ -230,7 +230,7 @@ const TherapistDashboard = () => {
           .single();
 
         // Fetch availability slots from the NEW normalized table
-        const { data: slotData } = await supabase
+        const { data: slotData } = await (supabase as any)
           .from("therapist_availability_slots")
           .select("*")
           .eq("therapist_id", therapistData?.id);
@@ -428,7 +428,7 @@ const TherapistDashboard = () => {
       const therapistId = therapistData.id;
 
       // Wipe existing
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await (supabase as any)
         .from('therapist_availability_slots')
         .delete()
         .eq('therapist_id', therapistId);
@@ -452,7 +452,7 @@ const TherapistDashboard = () => {
 
       // Bulk insert
       if (newSlots.length > 0) {
-        const { error: insertError } = await supabase
+        const { error: insertError } = await (supabase as any)
           .from('therapist_availability_slots')
           .insert(newSlots);
         if (insertError) throw insertError;

@@ -55,10 +55,10 @@ const TherapistProfile = () => {
   const fetchTherapist = async (therapistId: string) => {
     setLoading(true);
     try {
-      // 1. Fetch therapist details
-      const { data: therapistData, error: therapistError } = await supabase
+      // 1. Fetch therapist details - Minimal columns to avoid cache errors
+      const { data: therapistData, error: therapistError } = await (supabase as any)
         .from("therapists")
-        .select("*")
+        .select("id, user_id, profession, city, address, years_experience, session_duration_minutes, bio, license_number, avatar_url, specializations, health_funds, home_visits, price_per_session, instant_booking, available_today")
         .eq("id", therapistId)
         .single();
 

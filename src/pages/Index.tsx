@@ -26,9 +26,9 @@ const Index = () => {
   const fetchTherapists = async () => {
     setLoading(true);
     try {
-      const { data: therapistsData, error: therapistsError } = await supabase
+      const { data: therapistsData, error: therapistsError } = await (supabase as any)
         .from("therapists")
-        .select("*")
+        .select("id, user_id, profession, city, address, years_experience, session_duration_minutes, bio, license_number, avatar_url, specializations, health_funds, home_visits, price_per_session, instant_booking, available_today")
         .eq("is_active", true);
 
       if (therapistsError) throw therapistsError;

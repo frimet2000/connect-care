@@ -226,15 +226,29 @@ const TherapistDashboard = () => {
           .eq("user_id", user.id)
           .single();
           
-        // Fetch availability
+        // Fetch schedule from dedicated table
+        const { data: scheduleData } = await supabase
+           .from("therapist_schedules")
+           .select("*")
+           .eq("therapist_id", therapistData?.id)
+           .maybeSingle();
+
+        // Fetch availability (legacy fallback)
         const { data: availabilityData } = await supabase
           .from("availability")
           .select("*")
           .eq("therapist_id", therapistData?.id);
 
         if (profileData && therapistData) {
-          // Load weekly schedule from therapist data or reconstruct from availability
-          let loadedSchedule = therapistData.weekly_schedule as WeeklySchedule;
+          // Load weekly schedule from therapist_schedules OR therapists column OR reconstruct
+          let loadedSchedule = (scheduleData?.weekly_schedule as WeeklySchedule) || 
+                               (therapistData.weekly_schedule as WeeklySchedule);
+          let loadedMode = (scheduleData?.scheduling_mode as SchedulingMode) || 
+                           (therapistData.scheduling_mode as SchedulingMode) || 
+                           prev.schedulingMode;
+          let loadedText = scheduleData?.availability_text || 
+                           therapistData.availability_text || 
+                           prev.availabilityText;
 
           // If no JSON schedule, try to reconstruct from availability table (legacy/fallback)
           if (!loadedSchedule && availabilityData && availabilityData.length > 0) {
@@ -281,8 +295,8 @@ const TherapistDashboard = () => {
             healthFunds: therapistData.health_funds || prev.healthFunds,
             hasHealthFundAgreement: (therapistData.health_funds && therapistData.health_funds.length > 0) ? "yes" : "no",
             weeklySchedule: loadedSchedule || generateEmptySchedule(),
-            schedulingMode: therapistData.scheduling_mode || prev.schedulingMode,
-            availabilityText: therapistData.availability_text || prev.availabilityText,
+            schedulingMode: loadedMode,
+            availabilityText: loadedText,
           }));
           
           // Set local state for address

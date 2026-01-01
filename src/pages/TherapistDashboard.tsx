@@ -229,49 +229,24 @@ const TherapistDashboard = () => {
           .eq("user_id", user.id)
           .single();
 
-        // Fetch schedule from dedicated table
-        const { data: scheduleData } = await supabase
-          .from("therapist_schedules")
-          .select("*")
-          .eq("therapist_id", therapistData?.id)
-          .maybeSingle();
-
-        // Fetch availability (legacy fallback)
-        const { data: availabilityData } = await supabase
-          .from("availability")
+        // Fetch availability slots from the NEW normalized table
+        const { data: slotData } = await supabase
+          .from("therapist_availability_slots")
           .select("*")
           .eq("therapist_id", therapistData?.id);
 
         if (profileData && therapistData) {
-          // Load weekly schedule from therapist_schedules OR therapists column OR reconstruct
-          let loadedSchedule = (scheduleData?.weekly_schedule as unknown as WeeklySchedule) ||
-            (therapistData.weekly_schedule as unknown as WeeklySchedule);
-          let loadedText = scheduleData?.availability_text ||
-            therapistData.availability_text ||
-            "";
-
-          // If no JSON schedule, try to reconstruct from availability table (legacy/fallback)
-          if (!loadedSchedule && availabilityData && availabilityData.length > 0) {
-            loadedSchedule = generateEmptySchedule();
+          // Reconstruct the WeeklySchedule object from the normalized slots
+          let loadedSchedule = generateEmptySchedule();
+          if (slotData && slotData.length > 0) {
             loadedSchedule = loadedSchedule.map(day => {
-              // Find matching availability by day index
-              const dayIndex = daysOfWeek.findIndex(d => d.id === day.day);
-              const dbAvailability = availabilityData.find(a => a.day_of_week === dayIndex);
-
-              if (dbAvailability && dbAvailability.is_active) {
-                // Calculate slots (simple hour slots for now)
-                const start = parseInt(dbAvailability.start_time.split(':')[0]);
-                const end = parseInt(dbAvailability.end_time.split(':')[0]);
-                const slots = [];
-                for (let h = start; h < end; h++) {
-                  slots.push(`${h.toString().padStart(2, '0')}:00`);
-                }
-
+              const daySlots = slotData.filter(s => s.day_of_week === day.day);
+              if (daySlots.length > 0) {
                 return {
                   ...day,
                   active: true,
-                  hoursRange: `${dbAvailability.start_time.slice(0, 5)} - ${dbAvailability.end_time.slice(0, 5)}`,
-                  slots: slots
+                  timeRanges: daySlots.map(s => s.time_range),
+                  notes: daySlots[0]?.notes || "" // Assuming one note per day
                 };
               }
               return day;
@@ -294,8 +269,8 @@ const TherapistDashboard = () => {
             specializations: therapistData.specializations || prev.specializations,
             healthFunds: therapistData.health_funds || prev.healthFunds,
             hasHealthFundAgreement: (therapistData.health_funds && therapistData.health_funds.length > 0) ? "yes" : "no",
-            weeklySchedule: loadedSchedule || generateEmptySchedule(),
-            availabilityText: loadedText,
+            weeklySchedule: loadedSchedule,
+            availabilityText: therapistData.availability_text || "",
           }));
 
           // Set local state for address
@@ -413,54 +388,21 @@ const TherapistDashboard = () => {
         throw new Error("משתמש לא מחובר");
       }
 
-      // Update auth metadata
-      const { error: metadataError } = await supabase.auth.updateUser({
-        data: {
-          full_name: profile.name,
-          profession: profile.profession,
-          years_experience: profile.yearsExperience,
-          city: profile.city,
-          address: profile.address,
-          about_me: profile.bio,
-          education: profile.education,
-          license_number: profile.licenseNumber,
-          phone_number: profile.phoneNumber,
-          additional_phone_number: profile.additionalPhoneNumber,
-          website: profile.website,
-          availability_status: profile.availabilityStatus,
-          availability_text: profile.availabilityText,
-          specializations: profile.specializations,
-          weekly_schedule: profile.weeklySchedule,
-          has_health_fund_agreement: profile.hasHealthFundAgreement,
-          health_funds: profile.healthFunds,
-          has_private_insurance_agreement: profile.hasPrivateInsuranceAgreement,
-          private_insurance_name: profile.privateInsuranceName,
-          profile_image: profile.profileImage,
-          session_duration: profile.sessionDuration,
-        }
-      });
+      console.log("Saving profile for user:", user.id);
 
-      if (metadataError) throw metadataError;
-
-      // Update profiles table
+      // 1. Update basic profile info
       const { error: profileError } = await supabase
         .from('profiles')
-        .upsert({
-          user_id: user.id,
+        .update({
           full_name: profile.name,
           phone: profile.phoneNumber,
-          user_type: 'therapist'
-        }, { onConflict: 'user_id' });
+        })
+        .eq('id', user.id);
 
-      if (profileError) {
-        console.error('Error updating profiles:', profileError);
-        // Continue to try updating therapists table even if profile update fails
-      }
+      if (profileError) throw profileError;
 
-      // Update therapists table
-      // Note: we only update fields that exist in the table schema
-      // We removed schedule fields from here to avoid schema errors if columns don't exist
-      const { error: therapistError } = await supabase
+      // 2. Update therapist basic info
+      const { data: therapistData, error: therapistError } = await supabase
         .from('therapists')
         .upsert({
           user_id: user.id,
@@ -473,49 +415,47 @@ const TherapistDashboard = () => {
           specializations: profile.specializations,
           session_duration_minutes: profile.sessionDuration,
           health_funds: profile.healthFunds,
-          avatar_url: profile.profileImage, // Note: storing base64/url directly for now
-          is_active: true,
-          // weekly_schedule: profile.weeklySchedule, // REMOVED: Saved in dedicated table
-          // scheduling_mode: profile.schedulingMode, // REMOVED: Saved in dedicated table
-          // availability_text: profile.availabilityText, // REMOVED: Saved in dedicated table
+          avatar_url: profile.profileImage,
+          availability_text: profile.availabilityText,
           updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-
-      if (therapistError) {
-        console.error('Error updating therapists:', therapistError);
-      }
-
-      // Also update the schedule table using the secure RPC function
-      const { data: therapist } = await supabase
-        .from('therapists')
+        }, { onConflict: 'user_id' })
         .select('id')
-        .eq('user_id', user.id)
         .single();
 
-      if (therapist) {
-        try {
-          // Save directly to the dedicated schedule table
-          const { error: scheduleError } = await supabase
-            .from('therapist_schedules')
-            .upsert({
-              therapist_id: therapist.id,
-              weekly_schedule: profile.weeklySchedule as unknown as any,
-              availability_text: profile.availabilityText,
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'therapist_id' });
+      if (therapistError) throw therapistError;
 
-          if (scheduleError) {
-            console.error('Error saving schedule:', scheduleError);
-            throw scheduleError;
+      // 3. Update Availability Slots (Delete old, insert new)
+      const therapistId = therapistData.id;
+
+      // Wipe existing
+      const { error: deleteError } = await supabase
+        .from('therapist_availability_slots')
+        .delete()
+        .eq('therapist_id', therapistId);
+
+      if (deleteError) throw deleteError;
+
+      // Prepare new slots
+      const newSlots = [];
+      for (const day of profile.weeklySchedule) {
+        if (day.active && day.timeRanges.length > 0) {
+          for (const range of day.timeRanges) {
+            newSlots.push({
+              therapist_id: therapistId,
+              day_of_week: day.day,
+              time_range: range,
+              notes: day.notes
+            });
           }
-        } catch (err) {
-          console.error('Schedule save failed:', err);
-          toast({
-            variant: "destructive",
-            title: "שגיאה בשמירת היומן",
-            description: "הפרופיל נשמר אך ייתכן שהיומן לא התעדכן. נסה שוב.",
-          });
         }
+      }
+
+      // Bulk insert
+      if (newSlots.length > 0) {
+        const { error: insertError } = await supabase
+          .from('therapist_availability_slots')
+          .insert(newSlots);
+        if (insertError) throw insertError;
       }
 
       toast({
@@ -523,10 +463,11 @@ const TherapistDashboard = () => {
         description: "השינויים נשמרו במערכת",
       });
     } catch (error: any) {
+      console.error("Save failed:", error);
       toast({
         variant: "destructive",
         title: "שגיאה בשמירת הפרופיל",
-        description: error.message,
+        description: error.message || "אירעה שגיאה בחיבור לשרת",
       });
     }
   };
@@ -1456,14 +1397,21 @@ const TherapistDashboard = () => {
                                   <div
                                     key={range.value}
                                     onClick={() => {
+                                      const isCurrentlySelected = profile.weeklySchedule.some(day => day.active && day.timeRanges?.includes(range.value as any));
                                       const newSchedule = profile.weeklySchedule.map(day => {
-                                        if (!day.active) return day;
+                                        if (!day.active) return day; // Only affect active days
+
                                         const currentRanges = day.timeRanges || [];
                                         let newRanges;
-                                        if (currentRanges.includes(range.value as any)) {
+
+                                        if (isCurrentlySelected) {
                                           newRanges = currentRanges.filter(r => r !== range.value);
                                         } else {
-                                          newRanges = [...currentRanges, range.value as any];
+                                          if (!currentRanges.includes(range.value as any)) {
+                                            newRanges = [...currentRanges, range.value as any];
+                                          } else {
+                                            newRanges = currentRanges;
+                                          }
                                         }
                                         return { ...day, timeRanges: newRanges };
                                       });
@@ -1471,14 +1419,14 @@ const TherapistDashboard = () => {
                                     }}
                                     className={cn(
                                       "flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all",
-                                      isSelected
+                                      profile.weeklySchedule.some(day => day.timeRanges?.includes(range.value as any))
                                         ? "border-primary bg-primary/5 text-primary"
                                         : "border-border bg-background hover:bg-muted/10 text-muted-foreground"
                                     )}
                                   >
                                     <Checkbox
                                       id={`range-check-${range.value}`}
-                                      checked={isSelected}
+                                      checked={profile.weeklySchedule.some(day => day.timeRanges?.includes(range.value as any))}
                                       onCheckedChange={() => { }} // Controlled by div click
                                       className="data-[state=checked]:bg-primary pointer-events-none"
                                     />

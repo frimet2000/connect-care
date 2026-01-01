@@ -56,17 +56,18 @@ export const AvailabilitySettings = ({
   const handleRangeToggle = (dayIndex: number, rangeId: 'morning' | 'afternoon' | 'evening') => {
     const newSchedule = [...localSchedule];
     const currentRanges = newSchedule[dayIndex].timeRanges || [];
-    
+
     let newRanges;
     if (currentRanges.includes(rangeId)) {
       newRanges = currentRanges.filter(id => id !== rangeId);
     } else {
       newRanges = [...currentRanges, rangeId];
     }
-    
+
     newSchedule[dayIndex] = {
       ...newSchedule[dayIndex],
       timeRanges: newRanges,
+      active: true, // Auto-activate the day if a range is toggled
     };
     setLocalSchedule(newSchedule);
   };
@@ -105,11 +106,10 @@ export const AvailabilitySettings = ({
           {localSchedule.map((day, index) => (
             <div
               key={day.day}
-              className={`p-4 rounded-xl border transition-all ${
-                day.active
+              className={`p-4 rounded-xl border transition-all ${day.active
                   ? 'border-primary bg-primary/5'
                   : 'border-border opacity-80 hover:opacity-100'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-3 mb-3">
                 <Checkbox
@@ -132,7 +132,7 @@ export const AvailabilitySettings = ({
                       const Icon = range.icon;
                       const isSelected = day.timeRanges?.includes(range.id as any);
                       return (
-                        <div 
+                        <div
                           key={range.id}
                           className={`
                             flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all
@@ -140,7 +140,7 @@ export const AvailabilitySettings = ({
                           `}
                           onClick={() => handleRangeToggle(index, range.id as any)}
                         >
-                          <Checkbox 
+                          <Checkbox
                             checked={isSelected}
                             onCheckedChange={() => handleRangeToggle(index, range.id as any)}
                             id={`range-${day.day}-${range.id}`}

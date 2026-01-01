@@ -14,7 +14,271 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      appointments: {
+        Row: {
+          appointment_date: string
+          appointment_time: string
+          cancellation_reason: string | null
+          cancelled_at: string | null
+          cancelled_by: string | null
+          confirmed_at: string | null
+          coordination_notes: string | null
+          created_at: string
+          duration_minutes: number | null
+          id: string
+          parent_id: string
+          patient_age_range: Database["public"]["Enums"]["age_range"]
+          patient_first_name: string
+          status: Database["public"]["Enums"]["appointment_status"] | null
+          therapist_id: string
+        }
+        Insert: {
+          appointment_date: string
+          appointment_time: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          confirmed_at?: string | null
+          coordination_notes?: string | null
+          created_at?: string
+          duration_minutes?: number | null
+          id?: string
+          parent_id: string
+          patient_age_range: Database["public"]["Enums"]["age_range"]
+          patient_first_name: string
+          status?: Database["public"]["Enums"]["appointment_status"] | null
+          therapist_id: string
+        }
+        Update: {
+          appointment_date?: string
+          appointment_time?: string
+          cancellation_reason?: string | null
+          cancelled_at?: string | null
+          cancelled_by?: string | null
+          confirmed_at?: string | null
+          coordination_notes?: string | null
+          created_at?: string
+          duration_minutes?: number | null
+          id?: string
+          parent_id?: string
+          patient_age_range?: Database["public"]["Enums"]["age_range"]
+          patient_first_name?: string
+          status?: Database["public"]["Enums"]["appointment_status"] | null
+          therapist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      availability: {
+        Row: {
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          is_active: boolean | null
+          start_time: string
+          therapist_id: string
+        }
+        Insert: {
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          is_active?: boolean | null
+          start_time: string
+          therapist_id: string
+        }
+        Update: {
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          is_active?: boolean | null
+          start_time?: string
+          therapist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "availability_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          full_name: string
+          id: string
+          phone: string | null
+          updated_at: string
+          user_id: string
+          user_type: string
+        }
+        Insert: {
+          created_at?: string
+          full_name: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+          user_id: string
+          user_type: string
+        }
+        Update: {
+          created_at?: string
+          full_name?: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+          user_id?: string
+          user_type?: string
+        }
+        Relationships: []
+      }
+      reviews: {
+        Row: {
+          appointment_id: string | null
+          created_at: string
+          id: string
+          is_verified: boolean | null
+          parent_id: string
+          rating: number
+          review_text: string | null
+          therapist_id: string
+          would_recommend: boolean | null
+        }
+        Insert: {
+          appointment_id?: string | null
+          created_at?: string
+          id?: string
+          is_verified?: boolean | null
+          parent_id: string
+          rating: number
+          review_text?: string | null
+          therapist_id: string
+          would_recommend?: boolean | null
+        }
+        Update: {
+          appointment_id?: string | null
+          created_at?: string
+          id?: string
+          is_verified?: boolean | null
+          parent_id?: string
+          rating?: number
+          review_text?: string | null
+          therapist_id?: string
+          would_recommend?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviews_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reviews_therapist_id_fkey"
+            columns: ["therapist_id"]
+            isOneToOne: false
+            referencedRelation: "therapists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      therapists: {
+        Row: {
+          accepts_btl: boolean | null
+          address: string | null
+          available_today: boolean | null
+          avatar_url: string | null
+          bio: string | null
+          city: string
+          created_at: string
+          health_funds: string[] | null
+          home_visits: boolean | null
+          home_visits_radius_km: number | null
+          id: string
+          instant_booking: boolean | null
+          is_active: boolean | null
+          is_verified: boolean | null
+          latitude: number | null
+          license_number: string | null
+          longitude: number | null
+          profession: Database["public"]["Enums"]["profession_type"]
+          rating_average: number | null
+          rating_count: number | null
+          session_duration_minutes: number | null
+          specializations: string[] | null
+          updated_at: string
+          user_id: string
+          years_experience: number | null
+        }
+        Insert: {
+          accepts_btl?: boolean | null
+          address?: string | null
+          available_today?: boolean | null
+          avatar_url?: string | null
+          bio?: string | null
+          city: string
+          created_at?: string
+          health_funds?: string[] | null
+          home_visits?: boolean | null
+          home_visits_radius_km?: number | null
+          id?: string
+          instant_booking?: boolean | null
+          is_active?: boolean | null
+          is_verified?: boolean | null
+          latitude?: number | null
+          license_number?: string | null
+          longitude?: number | null
+          profession: Database["public"]["Enums"]["profession_type"]
+          rating_average?: number | null
+          rating_count?: number | null
+          session_duration_minutes?: number | null
+          specializations?: string[] | null
+          updated_at?: string
+          user_id: string
+          years_experience?: number | null
+        }
+        Update: {
+          accepts_btl?: boolean | null
+          address?: string | null
+          available_today?: boolean | null
+          avatar_url?: string | null
+          bio?: string | null
+          city?: string
+          created_at?: string
+          health_funds?: string[] | null
+          home_visits?: boolean | null
+          home_visits_radius_km?: number | null
+          id?: string
+          instant_booking?: boolean | null
+          is_active?: boolean | null
+          is_verified?: boolean | null
+          latitude?: number | null
+          license_number?: string | null
+          longitude?: number | null
+          profession?: Database["public"]["Enums"]["profession_type"]
+          rating_average?: number | null
+          rating_count?: number | null
+          session_duration_minutes?: number | null
+          specializations?: string[] | null
+          updated_at?: string
+          user_id?: string
+          years_experience?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +287,18 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      age_range:
+        | "infant"
+        | "toddler"
+        | "child_young"
+        | "child_old"
+        | "teen"
+        | "adult"
+      appointment_status: "pending" | "confirmed" | "completed" | "cancelled"
+      profession_type:
+        | "speech_therapy"
+        | "physiotherapy"
+        | "occupational_therapy"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +425,21 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      age_range: [
+        "infant",
+        "toddler",
+        "child_young",
+        "child_old",
+        "teen",
+        "adult",
+      ],
+      appointment_status: ["pending", "confirmed", "completed", "cancelled"],
+      profession_type: [
+        "speech_therapy",
+        "physiotherapy",
+        "occupational_therapy",
+      ],
+    },
   },
 } as const

@@ -626,17 +626,41 @@ const TherapistDashboard = () => {
           try {
              const { data: { user } } = await supabase.auth.getUser();
              if (user) {
-                const { error } = await supabase
+                // Get therapist ID first
+                const { data: therapist } = await supabase
                   .from('therapists')
-                  .update({ weekly_schedule: newSchedule })
-                  .eq('user_id', user.id);
+                  .select('id')
+                  .eq('user_id', user.id)
+                  .single();
+
+                if (therapist) {
+                  // Upsert to dedicated schedule table
+                  const { error } = await supabase
+                    .from('therapist_schedules')
+                    .upsert({
+                      therapist_id: therapist.id,
+                      weekly_schedule: newSchedule,
+                      scheduling_mode: profile.schedulingMode,
+                      availability_text: profile.availabilityText,
+                      updated_at: new Date().toISOString()
+                    }, { onConflict: 'therapist_id' });
+                    
+                  if (error) {
+                    console.error('Error saving to therapist_schedules:', error);
+                    // Fallback to updating therapists table directly if new table doesn't exist
+                    const { error: fallbackError } = await supabase
+                      .from('therapists')
+                      .update({ weekly_schedule: newSchedule })
+                      .eq('user_id', user.id);
+
+                    if (fallbackError) throw fallbackError;
+                  }
                   
-                if (error) throw error;
-                
-                toast({
-                  title: "היומן נשמר בהצלחה",
-                  description: "השינויים בזמינות עודכנו במערכת"
-                });
+                  toast({
+                    title: "היומן נשמר בהצלחה",
+                    description: "השינויים בזמינות עודכנו במערכת"
+                  });
+                }
              }
           } catch (error) {
              console.error('Error saving schedule:', error);

@@ -19,9 +19,6 @@ import {
   ChevronsUpDown,
   Image as ImageIcon,
   X,
-  Sun,
-  Sunset,
-  Moon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -73,8 +70,7 @@ import {
   AvailabilityStatus,
   WeeklySchedule,
   generateEmptySchedule,
-  daysOfWeek,
-  timeRangeOptions,
+  daysOfWeek
 } from "@/data/therapists";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
@@ -101,13 +97,13 @@ interface AvailabilitySlot {
   isActive: boolean;
 }
 
-const AppointmentCard = ({
-  appointment,
-  onApprove,
-  onDecline
-}: {
-  appointment: Appointment;
-  onApprove?: (id: string) => void;
+const AppointmentCard = ({ 
+  appointment, 
+  onApprove, 
+  onDecline 
+}: { 
+  appointment: Appointment; 
+  onApprove?: (id: string) => void; 
   onDecline?: (id: string) => void;
 }) => {
   return (
@@ -124,27 +120,27 @@ const AppointmentCard = ({
               {appointment.time}
             </span>
             {appointment.notes && (
-              <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                {appointment.notes}
-              </span>
+               <span className="text-xs bg-muted px-1.5 py-0.5 rounded">
+                 {appointment.notes}
+               </span>
             )}
           </div>
         </div>
       </div>
-
+      
       <div className="flex items-center gap-2">
         {appointment.status === 'pending' && onApprove && onDecline ? (
           <>
-            <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10 border-destructive/20 h-8" onClick={() => onDecline(appointment.id)}>
-              סירוב
-            </Button>
-            <Button size="sm" className="h-8" onClick={() => onApprove(appointment.id)}>
-              אישור
-            </Button>
+             <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10 border-destructive/20 h-8" onClick={() => onDecline(appointment.id)}>
+               סירוב
+             </Button>
+             <Button size="sm" className="h-8" onClick={() => onApprove(appointment.id)}>
+               אישור
+             </Button>
           </>
         ) : (
-          <Badge
-            variant="outline"
+          <Badge 
+            variant="outline" 
             className={cn(
               "px-2.5 py-0.5",
               appointment.status === 'confirmed' && "text-green-600 bg-green-50 border-green-200",
@@ -222,48 +218,67 @@ const TherapistDashboard = () => {
           .eq("user_id", user.id)
           .single();
 
-        // Fetch therapist data - EXTREMELY minimal to avoid cache errors
-        const { data: therapistData } = await (supabase as any)
+        // Fetch therapist data
+        const { data: therapistData } = await supabase
           .from("therapists")
-          .select("id, user_id, profession, city, address, years_experience, session_duration_minutes, bio, license_number, avatar_url, specializations, health_funds, home_visits, price_per_session, instant_booking, available_today")
+          .select("*")
           .eq("user_id", user.id)
           .single();
+          
+        // Fetch schedule from dedicated table
+        const { data: scheduleData } = await supabase
+           .from("therapist_schedules")
+           .select("*")
+           .eq("therapist_id", therapistData?.id)
+           .maybeSingle();
 
-        // Fetch availability slots and general info from the NEW normalized tables
-        const { data: slotData } = await (supabase as any)
-          .from("therapist_availability_slots")
+        // Fetch availability (legacy fallback)
+        const { data: availabilityData } = await supabase
+          .from("availability")
           .select("*")
           .eq("therapist_id", therapistData?.id);
 
-        const { data: infoData } = await (supabase as any)
-          .from("therapist_availability_info")
-          .select("*")
-          .eq("therapist_id", therapistData?.id)
-          .maybeSingle();
-
         if (profileData && therapistData) {
-          // Reconstruct the WeeklySchedule object from the normalized slots
-          let loadedSchedule = generateEmptySchedule();
-          if (slotData && slotData.length > 0) {
-            loadedSchedule = loadedSchedule.map(day => {
-              const daySlots = slotData.filter(s => s.day_of_week === day.day);
-              if (daySlots.length > 0) {
-                return {
-                  ...day,
-                  active: true,
-                  timeRanges: daySlots.map(s => s.time_range),
-                  notes: daySlots[0]?.notes || ""
-                };
-              }
-              return day;
-            });
+          // Load weekly schedule from therapist_schedules OR therapists column OR reconstruct
+          let loadedSchedule = (scheduleData?.weekly_schedule as WeeklySchedule) || 
+                               (therapistData.weekly_schedule as WeeklySchedule);
+          let loadedText = scheduleData?.availability_text || 
+                           therapistData.availability_text || 
+                           "";
+
+          // If no JSON schedule, try to reconstruct from availability table (legacy/fallback)
+          if (!loadedSchedule && availabilityData && availabilityData.length > 0) {
+             loadedSchedule = generateEmptySchedule();
+             loadedSchedule = loadedSchedule.map(day => {
+                // Find matching availability by day index
+                const dayIndex = daysOfWeek.findIndex(d => d.id === day.day);
+                const dbAvailability = availabilityData.find(a => a.day_of_week === dayIndex);
+                
+                if (dbAvailability && dbAvailability.is_active) {
+                   // Calculate slots (simple hour slots for now)
+                   const start = parseInt(dbAvailability.start_time.split(':')[0]);
+                   const end = parseInt(dbAvailability.end_time.split(':')[0]);
+                   const slots = [];
+                   for (let h = start; h < end; h++) {
+                     slots.push(`${h.toString().padStart(2, '0')}:00`);
+                   }
+                   
+                   return {
+                     ...day,
+                     active: true,
+                     hoursRange: `${dbAvailability.start_time.slice(0,5)} - ${dbAvailability.end_time.slice(0,5)}`,
+                     slots: slots
+                   };
+                }
+                return day;
+             });
           }
 
           setProfile(prev => ({
             ...prev,
             name: profileData.full_name || prev.name,
             phoneNumber: profileData.phone || prev.phoneNumber,
-
+            
             profession: (therapistData.profession as Profession) || prev.profession,
             yearsExperience: therapistData.years_experience || prev.yearsExperience,
             city: therapistData.city || prev.city,
@@ -275,20 +290,20 @@ const TherapistDashboard = () => {
             specializations: therapistData.specializations || prev.specializations,
             healthFunds: therapistData.health_funds || prev.healthFunds,
             hasHealthFundAgreement: (therapistData.health_funds && therapistData.health_funds.length > 0) ? "yes" : "no",
-            weeklySchedule: loadedSchedule,
-            availabilityText: infoData?.free_text || "",
+            weeklySchedule: loadedSchedule || generateEmptySchedule(),
+            availabilityText: loadedText,
           }));
-
+          
           // Set local state for address
           if (therapistData.city) {
-            setCitySelection(therapistData.city);
-            if (therapistData.address && therapistData.address.includes(therapistData.city)) {
-              // Try to extract street
-              const parts = therapistData.address.split(',');
-              if (parts.length > 0) {
-                setStreetAddress(parts[0].trim());
-              }
-            }
+             setCitySelection(therapistData.city);
+             if (therapistData.address && therapistData.address.includes(therapistData.city)) {
+                // Try to extract street
+                const parts = therapistData.address.split(',');
+                if (parts.length > 0) {
+                   setStreetAddress(parts[0].trim());
+                }
+             }
           }
         }
       } catch (error) {
@@ -303,7 +318,7 @@ const TherapistDashboard = () => {
     if (profile.profession) {
       const predefined = (specializationsByProfession[profile.profession as Profession] || []).map(o => o.label);
       const currentCustom = profile.specializations.filter(s => !predefined.includes(s) && s !== "אחר");
-
+      
       if (currentCustom.length > 0) {
         setCustomSpecs(currentCustom);
         setIsOtherSelected(true);
@@ -332,20 +347,20 @@ const TherapistDashboard = () => {
     const newCustomSpecs = [...customSpecs];
     newCustomSpecs[index] = value;
     setCustomSpecs(newCustomSpecs);
-
+    
     // Update profile
     const predefined = (specializationsByProfession[profile.profession as Profession] || []).map(o => o.label);
     const currentPredefined = profile.specializations.filter(s => predefined.includes(s));
-
+    
     // Filter out empty strings when saving to profile
     const validCustomSpecs = newCustomSpecs.filter(s => s.trim() !== "");
-
+    
     let newSpecializations = [...currentPredefined];
     if (isOtherSelected) {
       newSpecializations.push("אחר");
       newSpecializations = [...newSpecializations, ...validCustomSpecs];
     }
-
+    
     setProfile(prev => ({ ...prev, specializations: newSpecializations }));
   };
 
@@ -356,18 +371,18 @@ const TherapistDashboard = () => {
   const removeCustomSpecField = (index: number) => {
     const newCustomSpecs = customSpecs.filter((_, i) => i !== index);
     setCustomSpecs(newCustomSpecs);
-
+    
     // Update profile immediately
     const predefined = (specializationsByProfession[profile.profession as Profession] || []).map(o => o.label);
     const currentPredefined = profile.specializations.filter(s => predefined.includes(s));
     const validCustomSpecs = newCustomSpecs.filter(s => s.trim() !== "");
-
+    
     let newSpecializations = [...currentPredefined];
     if (isOtherSelected) {
       newSpecializations.push("אחר");
       newSpecializations = [...newSpecializations, ...validCustomSpecs];
     }
-
+    
     setProfile(prev => ({ ...prev, specializations: newSpecializations }));
   };
 
@@ -389,26 +404,59 @@ const TherapistDashboard = () => {
   const handleSaveProfile = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-
+      
       if (!user) {
         throw new Error("משתמש לא מחובר");
       }
 
-      console.log("Saving profile for user:", user.id);
+      // Update auth metadata
+      const { error: metadataError } = await supabase.auth.updateUser({
+        data: {
+          full_name: profile.name,
+          profession: profile.profession,
+          years_experience: profile.yearsExperience,
+          city: profile.city,
+          address: profile.address,
+          about_me: profile.bio,
+          education: profile.education,
+          license_number: profile.licenseNumber,
+          phone_number: profile.phoneNumber,
+          additional_phone_number: profile.additionalPhoneNumber,
+          website: profile.website,
+          availability_status: profile.availabilityStatus,
+          availability_text: profile.availabilityText,
+          specializations: profile.specializations,
+          weekly_schedule: profile.weeklySchedule,
+          has_health_fund_agreement: profile.hasHealthFundAgreement,
+          health_funds: profile.healthFunds,
+          has_private_insurance_agreement: profile.hasPrivateInsuranceAgreement,
+          private_insurance_name: profile.privateInsuranceName,
+          profile_image: profile.profileImage,
+          session_duration: profile.sessionDuration,
+        }
+      });
 
-      // 1. Update basic profile info
+      if (metadataError) throw metadataError;
+
+      // Update profiles table
       const { error: profileError } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          user_id: user.id,
           full_name: profile.name,
           phone: profile.phoneNumber,
-        })
-        .eq('id', user.id);
+          user_type: 'therapist'
+        }, { onConflict: 'user_id' });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error('Error updating profiles:', profileError);
+        // Continue to try updating therapists table even if profile update fails
+      }
 
-      // 2. Update therapist basic info (removed cursed availability_text)
-      const { data: therapistData, error: therapistError } = await supabase
+      // Update therapists table
+      // Note: we only update fields that exist in the table schema
+      // We removed schedule fields from here to avoid schema errors if columns don't exist
+      const { error: therapistError } = await supabase
         .from('therapists')
         .upsert({
           user_id: user.id,
@@ -421,71 +469,49 @@ const TherapistDashboard = () => {
           specializations: profile.specializations,
           session_duration_minutes: profile.sessionDuration,
           health_funds: profile.healthFunds,
-          avatar_url: profile.profileImage,
+          avatar_url: profile.profileImage, // Note: storing base64/url directly for now
+          is_active: true,
+          // weekly_schedule: profile.weeklySchedule, // REMOVED: Saved in dedicated table
+          // scheduling_mode: profile.schedulingMode, // REMOVED: Saved in dedicated table
+          // availability_text: profile.availabilityText, // REMOVED: Saved in dedicated table
           updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' })
-        .select('id')
-        .single();
+        }, { onConflict: 'user_id' });
 
-      if (therapistError) throw therapistError;
-
-      const therapistId = therapistData.id;
-
-      // 3. Update Availability Info (separate table to avoid cache issue)
-      try {
-        const { error: infoError } = await (supabase as any)
-          .from('therapist_availability_info')
-          .upsert({
-            therapist_id: therapistId,
-            free_text: profile.availabilityText,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'therapist_id' });
-
-        if (infoError) {
-          console.warn("Could not save availability info (tables might be missing):", infoError);
-        }
-      } catch (err) {
-        console.warn("Exception saving availability info:", err);
+      if (therapistError) {
+        console.error('Error updating therapists:', therapistError);
       }
 
-      // 4. Update Availability Slots (Delete old, insert new)
-      try {
-        // Wipe existing
-        const { error: deleteError } = await (supabase as any)
-          .from('therapist_availability_slots')
-          .delete()
-          .eq('therapist_id', therapistId);
+      // Also update the schedule table using the secure RPC function
+      const { data: therapist } = await supabase
+        .from('therapists')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+        
+      if (therapist) {
+         try {
+           // Save directly to the dedicated schedule table
+           const { error: scheduleError } = await supabase
+             .from('therapist_schedules')
+             .upsert({
+               therapist_id: therapist.id,
+               weekly_schedule: profile.weeklySchedule as unknown as any,
+               availability_text: profile.availabilityText,
+               updated_at: new Date().toISOString()
+             }, { onConflict: 'therapist_id' });
 
-        if (!deleteError) {
-          // Prepare new slots
-          const newSlots = [];
-          for (const day of profile.weeklySchedule) {
-            if (day.active && day.timeRanges.length > 0) {
-              for (const range of day.timeRanges) {
-                newSlots.push({
-                  therapist_id: therapistId,
-                  day_of_week: day.day,
-                  time_range: range,
-                  notes: day.notes
-                });
-              }
-            }
-          }
-
-          // Bulk insert
-          if (newSlots.length > 0) {
-            const { error: insertError } = await (supabase as any)
-              .from('therapist_availability_slots')
-              .insert(newSlots);
-            if (insertError) {
-              console.warn("Could not insert slots:", insertError);
-            }
-          }
-        } else {
-          console.warn("Could not delete slots (tables might be missing):", deleteError);
-        }
-      } catch (err) {
-        console.warn("Exception saving slots:", err);
+           if (scheduleError) {
+             console.error('Error saving schedule:', scheduleError);
+             throw scheduleError;
+           }
+         } catch (err) {
+            console.error('Schedule save failed:', err);
+            toast({
+              variant: "destructive",
+              title: "שגיאה בשמירת היומן",
+              description: "הפרופיל נשמר אך ייתכן שהיומן לא התעדכן. נסה שוב.",
+            });
+         }
       }
 
       toast({
@@ -493,11 +519,10 @@ const TherapistDashboard = () => {
         description: "השינויים נשמרו במערכת",
       });
     } catch (error: any) {
-      console.error("Save failed:", error);
       toast({
         variant: "destructive",
         title: "שגיאה בשמירת הפרופיל",
-        description: error.message || "אירעה שגיאה בחיבור לשרת",
+        description: error.message,
       });
     }
   };
@@ -506,7 +531,7 @@ const TherapistDashboard = () => {
     if (value === 'אחר') {
       const newIsOtherSelected = !isOtherSelected;
       setIsOtherSelected(newIsOtherSelected);
-
+      
       if (newIsOtherSelected) {
         // If turning ON, add "אחר" and initialize custom specs if empty
         if (customSpecs.length === 0) setCustomSpecs([""]);
@@ -557,7 +582,7 @@ const TherapistDashboard = () => {
   );
 
   const handleApprove = (id: string) => {
-    setAppointments(prev => prev.map(apt =>
+    setAppointments(prev => prev.map(apt => 
       apt.id === id ? { ...apt, status: 'confirmed' } : apt
     ));
     toast({
@@ -567,7 +592,7 @@ const TherapistDashboard = () => {
   };
 
   const handleDecline = (id: string) => {
-    setAppointments(prev => prev.map(apt =>
+    setAppointments(prev => prev.map(apt => 
       apt.id === id ? { ...apt, status: 'cancelled' } : apt
     ));
     toast({
@@ -615,58 +640,58 @@ const TherapistDashboard = () => {
         <meta name="description" content="ניהול תורים וזמינות למטפלים" />
       </Helmet>
 
-      <AvailabilitySettings
+      <AvailabilitySettings 
         isOpen={isAvailabilityOpen}
         onClose={() => setIsAvailabilityOpen(false)}
         schedule={profile.weeklySchedule}
         onSave={async (newSchedule) => {
           setProfile(prev => ({ ...prev, weeklySchedule: newSchedule }));
-
+          
           try {
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-              // Get therapist ID first
-              const { data: therapist } = await supabase
-                .from('therapists')
-                .select('id')
-                .eq('user_id', user.id)
-                .single();
+             const { data: { user } } = await supabase.auth.getUser();
+             if (user) {
+                // Get therapist ID first
+                const { data: therapist } = await supabase
+                  .from('therapists')
+                  .select('id')
+                  .eq('user_id', user.id)
+                  .single();
 
-              if (therapist) {
-                // Upsert to dedicated schedule table
-                const { error } = await supabase
-                  .from('therapist_schedules')
-                  .upsert({
-                    therapist_id: therapist.id,
-                    weekly_schedule: newSchedule as unknown as any,
-                    availability_text: profile.availabilityText,
-                    updated_at: new Date().toISOString()
-                  }, { onConflict: 'therapist_id' });
+                if (therapist) {
+                  // Upsert to dedicated schedule table
+                  const { error } = await supabase
+                    .from('therapist_schedules')
+                    .upsert({
+                      therapist_id: therapist.id,
+                      weekly_schedule: newSchedule as unknown as any,
+                      availability_text: profile.availabilityText,
+                      updated_at: new Date().toISOString()
+                    }, { onConflict: 'therapist_id' });
+                    
+                  if (error) {
+                    console.error('Error saving to therapist_schedules:', error);
+                    // Fallback to updating therapists table directly if new table doesn't exist
+                    const { error: fallbackError } = await supabase
+                      .from('therapists')
+                      .update({ weekly_schedule: newSchedule as unknown as any })
+                      .eq('user_id', user.id);
 
-                if (error) {
-                  console.error('Error saving to therapist_schedules:', error);
-                  // Fallback to updating therapists table directly if new table doesn't exist
-                  const { error: fallbackError } = await supabase
-                    .from('therapists')
-                    .update({ weekly_schedule: newSchedule as unknown as any })
-                    .eq('user_id', user.id);
-
-                  if (fallbackError) throw fallbackError;
+                    if (fallbackError) throw fallbackError;
+                  }
+                  
+                  toast({
+                    title: "היומן נשמר בהצלחה",
+                    description: "השינויים בזמינות עודכנו במערכת"
+                  });
                 }
-
-                toast({
-                  title: "היומן נשמר בהצלחה",
-                  description: "השינויים בזמינות עודכנו במערכת"
-                });
-              }
-            }
+             }
           } catch (error) {
-            console.error('Error saving schedule:', error);
-            toast({
-              variant: "destructive",
-              title: "שגיאה בשמירת היומן",
-              description: "נא לנסות שוב או לשמור דרך הכפתור הראשי"
-            });
+             console.error('Error saving schedule:', error);
+             toast({
+               variant: "destructive",
+               title: "שגיאה בשמירת היומן",
+               description: "נא לנסות שוב או לשמור דרך הכפתור הראשי"
+             });
           }
         }}
       />
@@ -825,9 +850,9 @@ const TherapistDashboard = () => {
                 ) : (
                   <div className="space-y-3">
                     {pendingAppointments.map((apt) => (
-                      <AppointmentCard
-                        key={apt.id}
-                        appointment={apt}
+                      <AppointmentCard 
+                        key={apt.id} 
+                        appointment={apt} 
                         onApprove={handleApprove}
                         onDecline={handleDecline}
                       />
@@ -866,15 +891,15 @@ const TherapistDashboard = () => {
 
                 <div className="bg-card rounded-xl border border-border p-6">
                   <div className="flex items-center gap-4 mb-6">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                      <Clock className="w-6 h-6" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold">הגדרות זמינות נוכחיות</h3>
-                      <p className="text-muted-foreground">
-                        ניהול שעות פעילות
-                      </p>
-                    </div>
+                     <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                       <Clock className="w-6 h-6" />
+                     </div>
+                     <div>
+                       <h3 className="text-lg font-semibold">הגדרות זמינות נוכחיות</h3>
+                       <p className="text-muted-foreground">
+                         ניהול שעות פעילות
+                       </p>
+                     </div>
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -892,14 +917,14 @@ const TherapistDashboard = () => {
                           </div>
                           {day.active && (
                             <div className="text-sm text-muted-foreground">
-                              {day.slots.length > 0 ? (
-                                <div className="flex flex-wrap gap-1">
-                                  {day.slots.map(s => (
-                                    <span key={s} className="bg-secondary/10 px-1.5 py-0.5 rounded text-xs">{s}</span>
-                                  ))}
-                                </div>
-                              ) : "אין תורים מוגדרים"}
-                            </div>
+                            {day.slots.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {day.slots.map(s => (
+                                  <span key={s} className="bg-secondary/10 px-1.5 py-0.5 rounded text-xs">{s}</span>
+                                ))}
+                              </div>
+                            ) : "אין תורים מוגדרים"}
+                          </div>
                           )}
                         </div>
                       );
@@ -915,47 +940,47 @@ const TherapistDashboard = () => {
                 </div>
 
                 <div className="bg-card rounded-xl border border-border p-6 space-y-8">
-
+                  
                   {/* Profile Image */}
                   <div className="space-y-4">
-                    <Label className="text-base font-semibold">תמונת פרופיל</Label>
-                    <div className="flex items-start gap-4">
-                      <div className="flex-1 max-w-sm">
-                        <div className="relative flex items-center justify-center w-full h-32 border-2 border-dashed rounded-lg border-muted-foreground/25 hover:border-primary/50 transition-colors bg-muted/5">
-                          {profile.profileImage ? (
-                            <div className="relative w-full h-full p-2">
-                              <img
-                                src={profile.profileImage}
-                                alt="Profile Preview"
-                                className="w-full h-full object-contain rounded-lg"
-                              />
-                              <button
-                                type="button"
-                                onClick={handleRemoveImage}
-                                className="absolute top-2 right-2 p-1.5 bg-destructive/90 text-destructive-foreground rounded-full hover:bg-destructive transition-colors shadow-sm"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ) : (
-                            <label
-                              htmlFor="image-upload"
-                              className="flex flex-col items-center justify-center w-full h-full cursor-pointer"
-                            >
-                              <ImageIcon className="w-8 h-8 text-muted-foreground mb-2" />
-                              <span className="text-sm text-muted-foreground">לחץ להעלאת תמונה</span>
-                              <input
-                                id="image-upload"
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={handleImageUpload}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                     <Label className="text-base font-semibold">תמונת פרופיל</Label>
+                     <div className="flex items-start gap-4">
+                       <div className="flex-1 max-w-sm">
+                         <div className="relative flex items-center justify-center w-full h-32 border-2 border-dashed rounded-lg border-muted-foreground/25 hover:border-primary/50 transition-colors bg-muted/5">
+                           {profile.profileImage ? (
+                             <div className="relative w-full h-full p-2">
+                               <img
+                                 src={profile.profileImage}
+                                 alt="Profile Preview"
+                                 className="w-full h-full object-contain rounded-lg"
+                               />
+                               <button
+                                 type="button"
+                                 onClick={handleRemoveImage}
+                                 className="absolute top-2 right-2 p-1.5 bg-destructive/90 text-destructive-foreground rounded-full hover:bg-destructive transition-colors shadow-sm"
+                               >
+                                 <Trash2 className="w-4 h-4" />
+                               </button>
+                             </div>
+                           ) : (
+                             <label
+                               htmlFor="image-upload"
+                               className="flex flex-col items-center justify-center w-full h-full cursor-pointer"
+                             >
+                               <ImageIcon className="w-8 h-8 text-muted-foreground mb-2" />
+                               <span className="text-sm text-muted-foreground">לחץ להעלאת תמונה</span>
+                               <input
+                                 id="image-upload"
+                                 type="file"
+                                 accept="image/*"
+                                 className="hidden"
+                                 onChange={handleImageUpload}
+                               />
+                             </label>
+                           )}
+                         </div>
+                       </div>
+                     </div>
                   </div>
 
                   <Separator />
@@ -981,10 +1006,10 @@ const TherapistDashboard = () => {
                             variant={profile.profession === opt.value ? "default" : "outline"}
                             size="sm"
                             onClick={() => setProfile({
-                              ...profile,
-                              profession: opt.value as Profession,
-                              professionLabel: opt.label,
-                              specializations: []
+                                ...profile,
+                                profession: opt.value as Profession,
+                                professionLabel: opt.label,
+                                specializations: []
                             })}
                           >
                             {opt.label}
@@ -1020,112 +1045,112 @@ const TherapistDashboard = () => {
                         className="text-right"
                       />
                     </div>
-
+                    
                     {/* Address Section */}
                     <div className="space-y-2 md:col-span-2 bg-muted/30 p-4 rounded-xl">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <Label className="text-base font-semibold flex items-center gap-2">
-                            <MapPin className="w-4 h-4" />
-                            כתובת הקליניקה
-                          </Label>
-                          <div className="flex items-center gap-2">
-                            <Label htmlFor="abroad-mode" className="text-sm cursor-pointer">קליניקה בחו"ל</Label>
-                            <Switch
-                              id="abroad-mode"
-                              checked={isAbroad}
-                              onCheckedChange={setIsAbroad}
-                            />
-                          </div>
+                           <Label className="text-base font-semibold flex items-center gap-2">
+                             <MapPin className="w-4 h-4" />
+                             כתובת הקליניקה
+                           </Label>
+                           <div className="flex items-center gap-2">
+                             <Label htmlFor="abroad-mode" className="text-sm cursor-pointer">קליניקה בחו"ל</Label>
+                             <Switch
+                               id="abroad-mode"
+                               checked={isAbroad}
+                               onCheckedChange={setIsAbroad}
+                             />
+                           </div>
                         </div>
 
                         {isAbroad ? (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                            <div className="space-y-2">
-                              <Label>מדינה</Label>
-                              <div className="relative">
-                                <Globe className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                  placeholder="הכנס מדינה"
-                                  value={abroadCountry}
-                                  onChange={(e) => setAbroadCountry(e.target.value)}
-                                  className="pr-9 text-right"
-                                />
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>עיר</Label>
-                              <div className="relative">
-                                <Building2 className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
-                                <Input
-                                  placeholder="הכנס עיר"
-                                  value={abroadCity}
-                                  onChange={(e) => setAbroadCity(e.target.value)}
-                                  className="pr-9 text-right"
-                                />
-                              </div>
-                            </div>
-                          </div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                             <div className="space-y-2">
+                               <Label>מדינה</Label>
+                               <div className="relative">
+                                 <Globe className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                                 <Input 
+                                   placeholder="הכנס מדינה"
+                                   value={abroadCountry}
+                                   onChange={(e) => setAbroadCountry(e.target.value)}
+                                   className="pr-9 text-right"
+                                 />
+                               </div>
+                             </div>
+                             <div className="space-y-2">
+                               <Label>עיר</Label>
+                               <div className="relative">
+                                 <Building2 className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
+                                 <Input 
+                                   placeholder="הכנס עיר"
+                                   value={abroadCity}
+                                   onChange={(e) => setAbroadCity(e.target.value)}
+                                   className="pr-9 text-right"
+                                 />
+                               </div>
+                             </div>
+                           </div>
                         ) : (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
-                            {/* Address Inputs - Swapped Order */}
-                            <div className="space-y-2">
-                              <Label>רחוב ומספר</Label>
-                              <Input
-                                placeholder="לדוגמה: הרצל 15"
-                                value={streetAddress}
-                                onChange={(e) => setStreetAddress(e.target.value)}
-                                className="text-right"
-                              />
-                            </div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                              {/* Address Inputs - Swapped Order */}
+                              <div className="space-y-2">
+                                <Label>רחוב ומספר</Label>
+                                <Input 
+                                  placeholder="לדוגמה: הרצל 15"
+                                  value={streetAddress}
+                                  onChange={(e) => setStreetAddress(e.target.value)}
+                                  className="text-right"
+                                />
+                              </div>
 
-                            <div className="space-y-2">
-                              <Label>עיר/יישוב</Label>
-                              <Popover open={openCitySelect} onOpenChange={setOpenCitySelect}>
-                                <PopoverTrigger asChild>
-                                  <Button
-                                    variant="outline"
-                                    role="combobox"
-                                    aria-expanded={openCitySelect}
-                                    className="w-full justify-between"
-                                  >
-                                    {citySelection || "בחר עיר..."}
-                                    <ChevronsUpDown className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                                  </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-[200px] p-0">
-                                  <Command>
-                                    <CommandInput placeholder="חפש עיר..." />
-                                    <CommandList>
-                                      <CommandEmpty>לא נמצאה עיר.</CommandEmpty>
-                                      <CommandGroup>
-                                        {israelCities.map((city) => (
-                                          <CommandItem
-                                            key={city}
-                                            value={city}
-                                            onSelect={(currentValue) => {
-                                              setCitySelection(currentValue === citySelection ? "" : currentValue);
-                                              setOpenCitySelect(false);
-                                            }}
-                                          >
-                                            <Check
-                                              className={cn(
-                                                "ml-2 h-4 w-4",
-                                                citySelection === city ? "opacity-100" : "opacity-0"
-                                              )}
-                                            />
-                                            {city}
-                                          </CommandItem>
-                                        ))}
-                                      </CommandGroup>
-                                    </CommandList>
-                                  </Command>
-                                </PopoverContent>
-                              </Popover>
-                            </div>
+                              <div className="space-y-2">
+                                <Label>עיר/יישוב</Label>
+                                <Popover open={openCitySelect} onOpenChange={setOpenCitySelect}>
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      variant="outline"
+                                      role="combobox"
+                                      aria-expanded={openCitySelect}
+                                      className="w-full justify-between"
+                                    >
+                                      {citySelection || "בחר עיר..."}
+                                      <ChevronsUpDown className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[200px] p-0">
+                                    <Command>
+                                      <CommandInput placeholder="חפש עיר..." />
+                                      <CommandList>
+                                        <CommandEmpty>לא נמצאה עיר.</CommandEmpty>
+                                        <CommandGroup>
+                                          {israelCities.map((city) => (
+                                            <CommandItem
+                                              key={city}
+                                              value={city}
+                                              onSelect={(currentValue) => {
+                                                setCitySelection(currentValue === citySelection ? "" : currentValue);
+                                                setOpenCitySelect(false);
+                                              }}
+                                            >
+                                              <Check
+                                    className={cn(
+                                      "ml-2 h-4 w-4",
+                                      citySelection === city ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                              {city}
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
 
 
-                          </div>
+                           </div>
                         )}
                       </div>
                     </div>
@@ -1150,30 +1175,30 @@ const TherapistDashboard = () => {
                         className="text-right"
                       />
                     </div>
-
+                    
                     <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="education">השכלה והכשרות</Label>
-                      <Textarea
-                        id="education"
-                        placeholder="פרט/י את התארים האקדמיים, לימודי תעודה והשתלמויות רלוונטיות..."
-                        value={profile.education}
-                        onChange={(e) => setProfile({ ...profile, education: e.target.value })}
-                        className="min-h-[80px] text-right"
-                      />
+                       <Label htmlFor="education">השכלה והכשרות</Label>
+                       <Textarea
+                         id="education"
+                         placeholder="פרט/י את התארים האקדמיים, לימודי תעודה והשתלמויות רלוונטיות..."
+                         value={profile.education}
+                         onChange={(e) => setProfile({ ...profile, education: e.target.value })}
+                         className="min-h-[80px] text-right"
+                       />
                     </div>
-
+                    
                     <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="licenseNumber">מספר רישיון</Label>
-                      <Input
-                        id="licenseNumber"
-                        placeholder="מספר רישיון משרד הבריאות / איגוד מקצועי"
-                        value={profile.licenseNumber}
-                        onChange={(e) => setProfile({ ...profile, licenseNumber: e.target.value })}
-                        className="text-right"
-                      />
+                       <Label htmlFor="licenseNumber">מספר רישיון</Label>
+                       <Input
+                         id="licenseNumber"
+                         placeholder="מספר רישיון משרד הבריאות / איגוד מקצועי"
+                         value={profile.licenseNumber}
+                         onChange={(e) => setProfile({ ...profile, licenseNumber: e.target.value })}
+                         className="text-right"
+                       />
                     </div>
                   </div>
-
+                  
                   <Separator />
 
                   {/* Bio */}
@@ -1251,25 +1276,25 @@ const TherapistDashboard = () => {
                       </div>
                     )}
                   </div>
-
+                  
                   <Separator />
-
+                  
                   {/* Insurance Section */}
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <Building2 className="w-5 h-5 text-muted-foreground" />
-                      הסדרים וביטוחים
+                       <Building2 className="w-5 h-5 text-muted-foreground" />
+                       הסדרים וביטוחים
                     </h3>
-
+                    
                     <div className="space-y-2">
                       <Label>בהסדר עם קופת חולים</Label>
-                      <RadioGroup
-                        value={profile.hasHealthFundAgreement}
+                      <RadioGroup 
+                        value={profile.hasHealthFundAgreement} 
                         onValueChange={(val) => {
-                          setProfile(prev => ({
-                            ...prev,
+                          setProfile(prev => ({ 
+                            ...prev, 
                             hasHealthFundAgreement: val,
-                            healthFunds: val === "no" ? [] : prev.healthFunds
+                            healthFunds: val === "no" ? [] : prev.healthFunds 
                           }));
                         }}
                         className="flex gap-4"
@@ -1288,8 +1313,8 @@ const TherapistDashboard = () => {
                         <div className="grid grid-cols-2 gap-2 mt-2 p-3 bg-muted/30 rounded-lg animate-in fade-in slide-in-from-top-1">
                           {['מכבי', 'כללית', 'כללית מושלם', 'מאוחדת', 'לאומית'].map((fund) => (
                             <div key={fund} className="flex items-center space-x-2 space-x-reverse">
-                              <Checkbox
-                                id={`fund-${fund}`}
+                              <Checkbox 
+                                id={`fund-${fund}`} 
                                 checked={profile.healthFunds.includes(fund)}
                                 onCheckedChange={(checked) => {
                                   setProfile(prev => {
@@ -1310,11 +1335,11 @@ const TherapistDashboard = () => {
 
                     <div className="space-y-2">
                       <Label>בהסדר עם ביטוח פרטי</Label>
-                      <RadioGroup
-                        value={profile.hasPrivateInsuranceAgreement}
+                      <RadioGroup 
+                        value={profile.hasPrivateInsuranceAgreement} 
                         onValueChange={(val) => {
-                          setProfile(prev => ({
-                            ...prev,
+                          setProfile(prev => ({ 
+                            ...prev, 
                             hasPrivateInsuranceAgreement: val,
                             privateInsuranceName: val === "no" ? "" : prev.privateInsuranceName
                           }));
@@ -1346,149 +1371,78 @@ const TherapistDashboard = () => {
                     </div>
                   </div>
 
-
+                  {/* Schedule Management */}
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    <Label>ניהול שעות פעילות</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsAvailabilityOpen(true)}
+                      className="w-full justify-start text-right font-normal"
+                    >
+                      <Calendar className="w-4 h-4 ml-2" />
+                      הגדרת שעות זמינות ביומן
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      לחץ לפתיחת חלון ניהול השעות והתורים
+                    </p>
+                  </div>
 
                   {/* Availability */}
                   <div className="space-y-4 pt-4 border-t border-border">
                     <h3 className="font-semibold text-lg">הגדרות זמינות</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-4">
+                       <div className="space-y-2">
                         <Label>סטטוס זמינות</Label>
-                        <div className="grid grid-cols-1 gap-2">
-                          {[
-                            { id: 'available_full', label: 'זמינות מלאה', color: 'bg-green-500' },
-                            { id: 'available_partial', label: 'זמינות חלקית', color: 'bg-yellow-500' },
-                            { id: 'specific_hours', label: 'שעות ספציפיות', color: 'bg-blue-500' },
-                            { id: 'waitlist', label: 'רשימת המתנה בלבד', color: 'bg-red-500' },
-                          ].map((status) => (
-                            <button
-                              key={status.id}
-                              type="button"
-                              onClick={() => setProfile({ ...profile, availabilityStatus: status.id as any })}
-                              className={cn(
-                                "flex items-center w-full px-4 py-3 rounded-xl border transition-all text-right",
-                                profile.availabilityStatus === status.id
-                                  ? "border-primary bg-[#0EA5E9] text-white"
-                                  : "border-border bg-muted/30 hover:bg-muted/50 text-foreground"
-                              )}
-                            >
-                              <div className={cn("w-2 h-2 rounded-full ml-3", status.color, profile.availabilityStatus === status.id && "bg-white")} />
-                              <span className="text-sm font-medium">{status.label}</span>
-                            </button>
-                          ))}
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            type="button"
+                            variant={profile.availabilityStatus === 'available_full' ? "default" : "outline"}
+                            className="justify-start"
+                            onClick={() => setProfile({ ...profile, availabilityStatus: 'available_full' })}
+                          >
+                            <div className="w-2 h-2 rounded-full bg-green-500 ml-2" />
+                            זמינות מלאה
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={profile.availabilityStatus === 'available_partial' ? "default" : "outline"}
+                            className="justify-start"
+                            onClick={() => setProfile({ ...profile, availabilityStatus: 'available_partial' })}
+                          >
+                            <div className="w-2 h-2 rounded-full bg-yellow-500 ml-2" />
+                            זמינות חלקית
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={profile.availabilityStatus === 'specific_hours' ? "default" : "outline"}
+                            className="justify-start"
+                            onClick={() => setProfile({ ...profile, availabilityStatus: 'specific_hours' })}
+                          >
+                            <div className="w-2 h-2 rounded-full bg-blue-500 ml-2" />
+                            שעות ספציפיות
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={profile.availabilityStatus === 'waitlist' ? "default" : "outline"}
+                            className="justify-start"
+                            onClick={() => setProfile({ ...profile, availabilityStatus: 'waitlist' })}
+                          >
+                            <div className="w-2 h-2 rounded-full bg-red-500 ml-2" />
+                            רשימת המתנה בלבד
+                          </Button>
                         </div>
                       </div>
-                      {profile.availabilityStatus !== 'waitlist' && (
-                        <div className="space-y-4">
-                          <div className="space-y-3">
-                            <Label>ימי פעילות</Label>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2">
-                              {daysOfWeek.map((day) => {
-                                const isDayActive = profile.weeklySchedule.find(d => d.day === day.id)?.active;
-                                return (
-                                  <div
-                                    key={day.id}
-                                    className={cn(
-                                      "flex items-center gap-2 p-3 rounded-xl border cursor-pointer transition-all",
-                                      isDayActive
-                                        ? "border-primary bg-primary/5 text-primary"
-                                        : "border-border bg-background hover:bg-muted/10 text-muted-foreground"
-                                    )}
-                                    onClick={() => {
-                                      const newSchedule = profile.weeklySchedule.map(d =>
-                                        d.day === day.id ? { ...d, active: !d.active } : d
-                                      );
-                                      setProfile({ ...profile, weeklySchedule: newSchedule });
-                                    }}
-                                  >
-                                    <Checkbox
-                                      id={`day-check-${day.id}`}
-                                      checked={isDayActive}
-                                      onCheckedChange={() => { }} // Controlled by div click
-                                      className="data-[state=checked]:bg-primary pointer-events-none"
-                                    />
-                                    <Label htmlFor={`day-check-${day.id}`} className="text-sm font-medium cursor-pointer pointer-events-none">
-                                      {day.label}
-                                    </Label>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          <div className="space-y-3">
-                            <Label>שעות זמינות מועדפות (ניתן לסמן כמה)</Label>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                              {timeRangeOptions.map((range) => {
-                                const Icon = range.value === 'morning' ? Sun : range.value === 'afternoon' ? Sunset : Moon;
-                                const isSelected = profile.weeklySchedule.some(day => day.active && day.timeRanges?.includes(range.value as any));
-
-                                return (
-                                  <div
-                                    key={range.value}
-                                    onClick={() => {
-                                      const isCurrentlySelected = profile.weeklySchedule.some(day => day.active && day.timeRanges?.includes(range.value as any));
-                                      const newSchedule = profile.weeklySchedule.map(day => {
-                                        if (!day.active) return day; // Only affect active days
-
-                                        const currentRanges = day.timeRanges || [];
-                                        let newRanges;
-
-                                        if (isCurrentlySelected) {
-                                          newRanges = currentRanges.filter(r => r !== range.value);
-                                        } else {
-                                          if (!currentRanges.includes(range.value as any)) {
-                                            newRanges = [...currentRanges, range.value as any];
-                                          } else {
-                                            newRanges = currentRanges;
-                                          }
-                                        }
-                                        return { ...day, timeRanges: newRanges };
-                                      });
-                                      setProfile({ ...profile, weeklySchedule: newSchedule });
-                                    }}
-                                    className={cn(
-                                      "flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all",
-                                      profile.weeklySchedule.some(day => day.timeRanges?.includes(range.value as any))
-                                        ? "border-primary bg-primary/5 text-primary"
-                                        : "border-border bg-background hover:bg-muted/10 text-muted-foreground"
-                                    )}
-                                  >
-                                    <Checkbox
-                                      id={`range-check-${range.value}`}
-                                      checked={profile.weeklySchedule.some(day => day.timeRanges?.includes(range.value as any))}
-                                      onCheckedChange={() => { }} // Controlled by div click
-                                      className="data-[state=checked]:bg-primary pointer-events-none"
-                                    />
-                                    <div className="flex flex-col flex-1 pointer-events-none">
-                                      <div className="flex items-center gap-2">
-                                        <Icon className="w-4 h-4" />
-                                        <span className="text-sm font-semibold">{range.label}</span>
-                                      </div>
-                                      <span className="text-[11px] opacity-70 mt-0.5">{range.description}</span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                              <AlertCircle className="w-3 h-3" />
-                              בחירה כאן תעדכן אוטומטית את כל ימי הפעילות שבחרת למעלה.
-                            </p>
-                          </div>
-
-                          {profile.availabilityStatus !== 'available_full' && (
-                            <div className="space-y-2">
-                              <Label htmlFor="availabilityText">טקסט זמינות חופשי (אופציונלי)</Label>
-                              <Input
-                                id="availabilityText"
-                                placeholder="לדוגמה: פנויה בימי ראשון בבוקר"
-                                value={profile.availabilityText}
-                                onChange={(e) => setProfile({ ...profile, availabilityText: e.target.value })}
-                                className="text-right"
-                              />
-                            </div>
-                          )}
+                      {profile.availabilityStatus !== 'waitlist' && profile.availabilityStatus !== 'available_full' && (
+                        <div className="space-y-2">
+                          <Label htmlFor="availabilityText">טקסט זמינות חופשי</Label>
+                          <Input
+                            id="availabilityText"
+                            placeholder="לדוגמה: פנויה בימי ראשון בבוקר"
+                            value={profile.availabilityText}
+                            onChange={(e) => setProfile({ ...profile, availabilityText: e.target.value })}
+                            className="text-right"
+                          />
                         </div>
                       )}
                     </div>

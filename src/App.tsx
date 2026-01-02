@@ -9,8 +9,6 @@ import Index from "./pages/Index";
 import TherapistProfile from "./pages/TherapistProfile";
 import TherapistDashboard from "./pages/TherapistDashboard";
 import Auth from "./pages/Auth";
-import AdminLogin from "./pages/AdminLogin";
-import AdminDashboard from "./pages/AdminDashboard";
 import NotFound from "./pages/NotFound";
 import FeedbackButton from "./components/FeedbackButton";
 
@@ -24,10 +22,10 @@ const VisitTracker = () => {
     // Only track main entry or distinct page views if needed. 
     // For "leads entered the system", we can count unique sessions or just page loads.
     // Let's use a simple counter in localStorage.
-    
+
     // Check if we already counted this session
     const sessionVisited = sessionStorage.getItem("visit_recorded");
-    
+
     if (!sessionVisited) {
       const currentVisits = parseInt(localStorage.getItem("total_system_visits") || "0");
       localStorage.setItem("total_system_visits", (currentVisits + 1).toString());
@@ -52,8 +50,6 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/therapist/:id" element={<TherapistProfile />} />
             <Route path="/dashboard" element={<TherapistDashboard />} />
-            <Route path="/admin/login" element={<AdminLogin />} />
-            <Route path="/admin/dashboard" element={<AdminDashboard />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

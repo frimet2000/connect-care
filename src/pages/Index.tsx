@@ -7,7 +7,7 @@ import CTASection from "@/components/CTASection";
 import Footer from "@/components/Footer";
 import { Helmet } from "react-helmet";
 import { supabase } from "@/integrations/supabase/client";
-import { Therapist, professionOptions, daysOfWeek } from "@/data/therapists";
+import { Therapist, professionOptions } from "@/data/therapists";
 import { toast } from "@/hooks/use-toast";
 
 const Index = () => {
@@ -26,9 +26,9 @@ const Index = () => {
   const fetchTherapists = async () => {
     setLoading(true);
     try {
-      const { data: therapistsData, error: therapistsError } = await (supabase as any)
+      const { data: therapistsData, error: therapistsError } = await supabase
         .from("therapists")
-        .select("id, user_id, profession, city, address, years_experience, session_duration_minutes, bio, license_number, avatar_url, specializations, health_funds, home_visits, price_per_session, instant_booking, available_today")
+        .select("*")
         .eq("is_active", true);
 
       if (therapistsError) throw therapistsError;
@@ -47,45 +47,8 @@ const Index = () => {
 
       if (profilesError) throw profilesError;
 
-      // Fetch all availability data for these therapists from the NEW normalized tables
-      const { data: allSlots } = await (supabase as any)
-        .from("therapist_availability_slots")
-        .select("*")
-        .in("therapist_id", therapistsData.map(t => t.id));
-
-      const { data: allInfo } = await (supabase as any)
-        .from("therapist_availability_info")
-        .select("*")
-        .in("therapist_id", therapistsData.map(t => t.id));
-
       const mappedTherapists: Therapist[] = therapistsData.map((t) => {
         const profile = profilesData?.find((p) => p.user_id === t.user_id);
-        const therapistSlots = allSlots?.filter((s: any) => s.therapist_id === t.id) || [];
-        const therapistInfo = allInfo?.find((i: any) => i.therapist_id === t.id);
-
-        // Reconstruct weeklySchedule from slots
-        const therapistSchedule = daysOfWeek.map(dayObj => {
-          const daySlots = therapistSlots.filter((s: any) => s.day_of_week === dayObj.id);
-          if (daySlots.length > 0) {
-            return {
-              day: dayObj.id,
-              active: true,
-              timeRanges: daySlots.map((s: any) => s.time_range),
-              slots: [],
-              hoursRange: "",
-              notes: daySlots[0]?.notes || ""
-            };
-          }
-          return {
-            day: dayObj.id,
-            active: false,
-            slots: [],
-            timeRanges: [],
-            hoursRange: "",
-            notes: ""
-          };
-        });
-
         const professionLabel =
           professionOptions.find((p) => p.value === t.profession)?.label ||
           t.profession;
@@ -93,19 +56,19 @@ const Index = () => {
         return {
           id: t.id,
           name: profile?.full_name || "מטפל",
-          profession: t.profession as any,
+          profession: t.profession as any, // Cast to specific enum type
           professionLabel,
           avatar: t.avatar_url || undefined,
           yearsExperience: t.years_experience || 0,
           city: t.city,
           address: t.address || undefined,
-          distance: 0,
+          distance: 0, // Placeholder as we don't calculate distance yet
           sessionDuration: t.session_duration_minutes || 45,
           specializations: t.specializations || [],
           availabilityStatus: t.available_today
             ? "available_full"
-            : "available_partial",
-          availabilityText: therapistInfo?.free_text || (t.available_today ? "זמין היום" : "זמין"),
+            : "available_partial", // Approximation
+          availabilityText: t.available_today ? "זמין היום" : "זמין",
           bio: t.bio || "",
           homeVisits: t.home_visits || false,
           acceptsBtl: t.accepts_btl || false,
@@ -113,9 +76,8 @@ const Index = () => {
           phoneNumber: profile?.phone || "",
           availableToday: t.available_today || false,
           instantBooking: t.instant_booking || false,
-          pricePerSession: (t as any).price_per_session || 0,
-          targetAudience: (t as any).target_audience || [],
-          weeklySchedule: therapistSchedule,
+          pricePerSession: t.price_per_session || 0,
+          targetAudience: t.target_audience || [],
         };
       });
 

@@ -9,7 +9,6 @@ export interface DaySchedule {
   active: boolean;
   slots: string[];
   hoursRange?: string;
-  timeRanges: ('morning' | 'afternoon' | 'evening')[];
   notes?: string;
 }
 
@@ -60,7 +59,6 @@ export const generateEmptySchedule = (): WeeklySchedule => {
     active: false,
     slots: [],
     hoursRange: '',
-    timeRanges: [],
     notes: ''
   }));
 };
@@ -132,13 +130,5 @@ export const healthFundOptions = [
   { value: 'meuhedet', label: 'מאוחדת' },
   { value: 'leumit', label: 'לאומית' },
 ];
-
-export const timeRangeOptions = [
-  { value: 'morning' as const, label: 'בוקר', description: '08:00-12:00' },
-  { value: 'afternoon' as const, label: 'צהריים', description: '12:00-16:00' },
-  { value: 'evening' as const, label: 'ערב', description: '16:00-20:00' },
-];
-
-export type TimeRangeValue = (typeof timeRangeOptions)[number]['value'];
 
 export const mockTherapists: Therapist[] = [];

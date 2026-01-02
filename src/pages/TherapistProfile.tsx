@@ -17,10 +17,7 @@ import {
   Phone,
   Mail,
   Globe,
-  User,
-  Sun,
-  Sunset,
-  Moon
+  User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,10 +52,10 @@ const TherapistProfile = () => {
   const fetchTherapist = async (therapistId: string) => {
     setLoading(true);
     try {
-      // 1. Fetch therapist details - Minimal columns to avoid cache errors
-      const { data: therapistData, error: therapistError } = await (supabase as any)
+      // 1. Fetch therapist details
+      const { data: therapistData, error: therapistError } = await supabase
         .from("therapists")
-        .select("id, user_id, profession, city, address, years_experience, session_duration_minutes, bio, license_number, avatar_url, specializations, health_funds, home_visits, price_per_session, instant_booking, available_today")
+        .select("*")
         .eq("id", therapistId)
         .single();
 
@@ -73,78 +70,70 @@ const TherapistProfile = () => {
 
       if (profileError) throw profileError;
 
-      // 3. Fetch dedicated schedule (preferred, handle 404 gracefully)
-      let scheduleData = null;
-      // 3. Fetch availability slots from the NEW normalized table
-      const { data: slotData, error: slotErr } = await (supabase as any)
-        .from("therapist_availability_slots")
-        .select("*")
-        .eq("therapist_id", therapistId);
-
-      if (slotErr) {
-        console.error("Error fetching slots:", slotErr);
-      }
-
-      // 4. Reconstruct the WeeklySchedule object
-      let weeklySchedule: WeeklySchedule = daysOfWeek.map(dayObj => {
-        const daySlots = slotData?.filter(s => s.day_of_week === dayObj.id) || [];
-        if (daySlots.length > 0) {
-          return {
-            day: dayObj.id,
-            active: true,
-            timeRanges: daySlots.map(s => s.time_range),
-            slots: [], // Legacy field, not used in new display
-            hoursRange: "", // Legacy field
-            notes: daySlots[0]?.notes || ""
-          };
-        }
-        return {
-          day: dayObj.id,
-          active: false,
-          slots: [],
-          timeRanges: [],
-          hoursRange: "",
-          notes: ""
-        };
-      });
-
-      // If no active days found, try legacy columns as emergency fallback
-      if (weeklySchedule.every(d => !d.active)) {
-        const rawSchedule = therapistData.weekly_schedule;
-        if (rawSchedule && Array.isArray(rawSchedule) && rawSchedule.length > 0) {
-          weeklySchedule = daysOfWeek.map(dayObj => {
-            const existingDay = (rawSchedule as any[]).find((d: any) => d.day === dayObj.id);
-            return {
-              day: dayObj.id,
-              active: !!existingDay?.active,
-              slots: Array.isArray(existingDay?.slots) ? existingDay.slots : [],
-              timeRanges: Array.isArray(existingDay?.timeRanges) ? existingDay.timeRanges : [],
-              hoursRange: existingDay?.hoursRange || "",
-              notes: existingDay?.notes || ""
-            };
-          });
-        }
-      }
-
-      // Final pass to ensure hoursRange is set if slots exist
-      weeklySchedule = weeklySchedule.map(day => {
-        if (day.active && !day.hoursRange && day.slots && day.slots.length > 0) {
-          const sortedSlots = [...day.slots].sort();
-          const start = sortedSlots[0];
-          const end = sortedSlots[sortedSlots.length - 1];
-          return { ...day, hoursRange: `${start} - ${end}` };
-        }
-        return day;
-      });
-
-      // 5. Fetch general info text from new table
-      const { data: infoData } = await (supabase as any)
-        .from("therapist_availability_info")
+      // 3. Fetch dedicated schedule (preferred)
+      const { data: scheduleData } = await supabase
+        .from("therapist_schedules")
         .select("*")
         .eq("therapist_id", therapistId)
         .maybeSingle();
 
-      let availabilityText = infoData?.free_text || "";
+      // 4. Determine schedule source
+      let weeklySchedule: WeeklySchedule | null = 
+          (scheduleData?.weekly_schedule as unknown as WeeklySchedule) || 
+          (therapistData.weekly_schedule as unknown as WeeklySchedule);
+      
+      let availabilityText = scheduleData?.availability_text || therapistData.availability_text;
+
+      if (weeklySchedule) {
+        weeklySchedule = weeklySchedule.map(day => {
+          if (day.active && !day.hoursRange && day.slots && day.slots.length > 0) {
+             const sortedSlots = [...day.slots].sort();
+             const start = sortedSlots[0];
+             const end = sortedSlots[sortedSlots.length - 1];
+             // Simple range from first to last slot start time
+             return { ...day, hoursRange: `${start} - ${end}` };
+          }
+          return day;
+        });
+      }
+
+      if (!weeklySchedule) {
+        const { data: availabilityData, error: availabilityError } = await supabase
+          .from("availability")
+          .select("*")
+          .eq("therapist_id", therapistId);
+
+        if (availabilityError) throw availabilityError;
+
+        // Map availability to WeeklySchedule
+        weeklySchedule = daysOfWeek.map(dayObj => {
+          // Map day IDs (sunday..saturday) to DB day_of_week (0..6, assuming 0 is Sunday)
+          const dayIndex = daysOfWeek.findIndex(d => d.id === dayObj.id);
+          const dayAvailability = availabilityData?.find(a => a.day_of_week === dayIndex);
+
+          let slots: string[] = [];
+          let hoursRange = "";
+
+          if (dayAvailability && dayAvailability.is_active) {
+            // Generate slots every hour
+            const start = parseInt(dayAvailability.start_time.split(':')[0]);
+            const end = parseInt(dayAvailability.end_time.split(':')[0]);
+            hoursRange = `${dayAvailability.start_time.slice(0, 5)} - ${dayAvailability.end_time.slice(0, 5)}`;
+            
+            for (let h = start; h < end; h++) {
+              slots.push(`${h.toString().padStart(2, '0')}:00`);
+            }
+          }
+
+          return {
+            day: dayObj.id,
+            active: !!(dayAvailability && dayAvailability.is_active),
+            slots,
+            hoursRange,
+            notes: ""
+          };
+        });
+      }
 
       const professionLabel =
         professionOptions.find((p) => p.value === therapistData.profession)?.label ||
@@ -174,8 +163,8 @@ const TherapistProfile = () => {
         availableToday: therapistData.available_today || false,
         instantBooking: therapistData.instant_booking || false,
         weeklySchedule,
-        pricePerSession: (therapistData as any).price_per_session || 0,
-        targetAudience: (therapistData as any).target_audience || [],
+        pricePerSession: therapistData.price_per_session || 0,
+        targetAudience: therapistData.target_audience || [],
       };
 
       setTherapist(mappedTherapist);
@@ -238,11 +227,11 @@ const TherapistProfile = () => {
   const handleShare = (platform: 'whatsapp' | 'email') => {
     const url = window.location.href;
     const text = `היי, רציתי לשתף איתך את הפרופיל של ${therapist.name} ב-TherapyConnect:\n${url}`;
-
+    
     if (platform === 'whatsapp') {
       // Share with others (select contact)
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-
+      
       // Track click for analytics
       try {
         const clicks = JSON.parse(localStorage.getItem('whatsapp_clicks') || '{}');
@@ -268,14 +257,14 @@ const TherapistProfile = () => {
         { time: "17:00", available: true },
       ];
     }
-
+    
     const date = new Date(dateStr);
     const dayIndex = date.getDay();
     const dayId = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'][dayIndex];
-
+    
     const daySchedule = therapist.weeklySchedule.find(d => d.day === dayId);
     if (!daySchedule || !daySchedule.active) return [];
-
+    
     return daySchedule.slots.map(slot => ({
       time: slot,
       available: true
@@ -467,83 +456,56 @@ const TherapistProfile = () => {
                 </div>
 
                 {/* Reception Times */}
-                <div className="bg-card rounded-2xl shadow-card p-6">
-                  <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-primary" />
-                    מועדי קבלה
-                  </h2>
-
-                  {(!therapist.weeklySchedule || therapist.weeklySchedule.filter(d => d.active).length === 0) ? (
-                    <p className="text-muted-foreground text-center py-4">לא הוגדרו שעות קבלה</p>
-                  ) : (
+                {therapist.weeklySchedule && (
+                  <div className="bg-card rounded-2xl shadow-card p-6">
+                    <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+                      <Clock className="w-5 h-5 text-primary" />
+                      מועדי קבלה
+                    </h2>
                     <div className="space-y-3">
-                      {therapist.weeklySchedule.filter(d => d.active).map(day => {
-                        const isToday = new Date().getDay() === daysOfWeek.findIndex(d => d.id === day.day);
-                        const currentHour = new Date().getHours();
-
-                        return (
-                          <div key={day.day} className={`p-3 rounded-xl border transition-colors ${isToday ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-transparent'}`}>
-                            <div className="flex justify-between items-center mb-2">
-                              <span className={`font-semibold text-sm ${isToday ? 'text-primary' : ''}`}>
-                                {daysOfWeek.find(d => d.id === day.day)?.label}
-                              </span>
-                              {isToday && <span className="text-[10px] font-medium bg-primary/10 text-primary px-2 py-0.5 rounded-full">היום</span>}
-                            </div>
-
-                            {day.timeRanges && day.timeRanges.length > 0 ? (
-                              <div className="flex flex-wrap gap-2">
-                                {day.timeRanges.map(rangeId => {
-                                  const range = {
-                                    morning: { label: 'בוקר', time: '08:00-12:00', start: 8, end: 12, icon: Sun },
-                                    afternoon: { label: 'צהריים', time: '12:00-16:00', start: 12, end: 16, icon: Sunset },
-                                    evening: { label: 'ערב', time: '16:00-20:00', start: 16, end: 20, icon: Moon },
-                                  }[rangeId];
-
-                                  if (!range) return null;
-
-                                  const isActiveNow = isToday && currentHour >= range.start && currentHour < range.end;
-                                  const Icon = range.icon;
-
-                                  return (
-                                    <div key={rangeId} className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded border ${isActiveNow ? 'bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-400' : 'bg-background text-muted-foreground'}`}>
-                                      <Icon className="w-3 h-3" />
-                                      <span>{range.label}</span>
-                                      <span className="opacity-70 text-[10px] ltr:ml-1">({range.time})</span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : (day.slots && day.slots.length > 0) ? (
-                              <div className="flex flex-wrap gap-1">
-                                {day.slots.map(slot => (
-                                  <span key={slot} className="bg-secondary/20 px-1.5 py-0.5 rounded text-xs text-foreground">
-                                    {slot}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : day.hoursRange ? (
-                              <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
-                                <Clock className="w-3.5 h-3.5" />
-                                {day.hoursRange}
-                              </div>
-                            ) : (
-                              <div className="text-xs text-muted-foreground italic">אין שעות מוגדרות</div>
-                            )}
-
-                            {day.notes && (
-                              <p className="text-xs text-muted-foreground mt-2 border-t border-border/50 pt-1">
-                                {day.notes}
-                              </p>
-                            )}
+                      {therapist.weeklySchedule.filter(d => d.active).map(day => (
+                        <div key={day.day} className="bg-muted/50 p-3 rounded-xl">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-semibold text-sm">
+                              {day.day === 'sunday' ? 'ראשון' : 
+                               day.day === 'monday' ? 'שני' : 
+                               day.day === 'tuesday' ? 'שלישי' : 
+                               day.day === 'wednesday' ? 'רביעי' : 
+                               day.day === 'thursday' ? 'חמישי' : 
+                               day.day === 'friday' ? 'שישי' : 'שבת'}
+                            </span>
                           </div>
-                        );
-                      })}
+                          {(day.slots && day.slots.length > 0) ? (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {day.slots.map(slot => (
+                                <span key={slot} className="bg-secondary/20 px-1.5 py-0.5 rounded text-xs text-foreground">
+                                  {slot}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                             day.hoursRange && (
+                                <div className="text-sm flex items-center gap-1.5 text-muted-foreground">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  {day.hoursRange}
+                                </div>
+                             )
+                          )}
+                          {day.notes && (
+                            <p className="text-xs text-muted-foreground mt-1 border-t border-border/50 pt-1">
+                              {day.notes}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                      {therapist.weeklySchedule.filter(d => d.active).length === 0 && (
+                        <p className="text-muted-foreground">לא צוינו מועדי קבלה</p>
+                      )}
                     </div>
-                  )}
-
-                  {therapist.availabilityText &&
-                    therapist.availabilityText !== "זמין" &&
-                    therapist.availabilityText !== "זמין היום" && (
+                    
+                    {therapist.availabilityText && 
+                     therapist.availabilityText !== "זמין" && 
+                     therapist.availabilityText !== "זמין היום" && (
                       <div className="mt-4 pt-4 border-t border-border/50">
                         <h3 className="text-sm font-semibold mb-2 flex items-center gap-2">
                           <MessageCircle className="w-4 h-4 text-primary" />
@@ -554,7 +516,8 @@ const TherapistProfile = () => {
                         </p>
                       </div>
                     )}
-                </div>
+                  </div>
+                )}
 
                 {/* Health Funds */}
                 {therapist.healthFunds.length > 0 && (
@@ -591,13 +554,13 @@ const TherapistProfile = () => {
                   <p className="text-foreground font-medium mb-4">
                     {therapist.address || therapist.city}
                   </p>
-
+                  
                   {/* Map */}
                   <div className="w-full h-64 bg-muted rounded-xl overflow-hidden mb-4 relative">
-                    <iframe
-                      width="100%"
-                      height="100%"
-                      frameBorder="0"
+                    <iframe 
+                      width="100%" 
+                      height="100%" 
+                      frameBorder="0" 
                       style={{ border: 0 }}
                       src={`https://maps.google.com/maps?q=${encodeURIComponent(therapist.address || therapist.city)}&t=&z=15&ie=UTF8&iwloc=&output=embed`}
                       allowFullScreen
@@ -605,16 +568,16 @@ const TherapistProfile = () => {
                   </div>
 
                   <div className="flex gap-3">
-                    <Button
-                      variant="outline"
+                    <Button 
+                      variant="outline" 
                       className="flex-1 gap-2"
                       onClick={() => window.open(`https://waze.com/ul?q=${encodeURIComponent(therapist.address || therapist.city)}`, '_blank')}
                     >
                       <Navigation className="w-4 h-4" />
                       נווט עם Waze
                     </Button>
-                    <Button
-                      variant="outline"
+                    <Button 
+                      variant="outline" 
                       className="flex-1 gap-2"
                       onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(therapist.address || therapist.city)}`, '_blank')}
                     >
@@ -651,10 +614,11 @@ const TherapistProfile = () => {
                                 setSelectedDate(day.date);
                                 setSelectedTime(null);
                               }}
-                              className={`flex-shrink-0 w-16 py-3 rounded-xl border-2 transition-all text-center ${selectedDate === day.date
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border hover:border-primary/50"
-                                }`}
+                              className={`flex-shrink-0 w-16 py-3 rounded-xl border-2 transition-all text-center ${
+                                selectedDate === day.date
+                                  ? "border-primary bg-primary/10 text-primary"
+                                  : "border-border hover:border-primary/50"
+                              }`}
                             >
                               <p className="text-xs font-medium">
                                 {day.isToday ? "היום" : day.dayName}
@@ -679,12 +643,13 @@ const TherapistProfile = () => {
                                   key={slot.time}
                                   onClick={() => slot.available && setSelectedTime(slot.time)}
                                   disabled={!slot.available}
-                                  className={`py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${!slot.available
-                                    ? "border-border bg-muted/50 text-muted-foreground cursor-not-allowed line-through"
-                                    : selectedTime === slot.time
+                                  className={`py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${
+                                    !slot.available
+                                      ? "border-border bg-muted/50 text-muted-foreground cursor-not-allowed line-through"
+                                      : selectedTime === slot.time
                                       ? "border-primary bg-primary/10 text-primary"
                                       : "border-border hover:border-primary/50"
-                                    }`}
+                                  }`}
                                 >
                                   {slot.time}
                                 </button>
@@ -751,21 +716,21 @@ const TherapistProfile = () => {
                         המטפל זמין לפניות טלפוניות או בהודעה.
                         ניתן לראות את מועדי הקבלה בפרטי הפרופיל.
                       </p>
-
+                      
                       <div className="space-y-3">
-                        <Button
-                          variant="gradient"
-                          size="xl"
+                        <Button 
+                          variant="gradient" 
+                          size="xl" 
                           className="w-full gap-2"
                           onClick={() => window.open(`tel:${therapist.phoneNumber}`, '_self')}
                         >
                           <Phone className="w-5 h-5" />
                           חייג למטפל
                         </Button>
-
-                        <Button
-                          variant="outline"
-                          size="xl"
+                        
+                        <Button 
+                          variant="outline" 
+                          size="xl" 
                           className="w-full gap-2"
                           onClick={() => handleShare('whatsapp')}
                         >

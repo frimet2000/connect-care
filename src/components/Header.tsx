@@ -1,9 +1,8 @@
 import { Button } from "@/components/ui/button";
-import { Heart, Menu, User, LayoutDashboard, LogOut, ShieldAlert } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Heart, Menu, User, LogOut, LayoutDashboard } from "lucide-react";
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,36 +13,8 @@ import {
 
 const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      // Check session storage first
-      if (sessionStorage.getItem("isAdminAuthenticated") === "true") {
-        setIsAdmin(true);
-        return;
-      }
-
-      if (!user) {
-        setIsAdmin(false);
-        return;
-      }
-
-      const { data } = await supabase
-        .from('profiles')
-        .select('user_type')
-        .eq('user_id', user.id)
-        .single();
-
-      if (data?.user_type === 'admin') {
-        setIsAdmin(true);
-      }
-    };
-
-    checkAdminStatus();
-  }, [user]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -56,7 +27,7 @@ const Header = () => {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl gradient-hero flex items-center justify-center">
+            <div className="w-10 h-10 rounded-xl gradient-hero flex items-center justify-center shadow-sm">
               <Heart className="w-5 h-5 text-primary-foreground" />
             </div>
             <span className="text-xl font-bold text-foreground">TherapyConnect</span>
@@ -64,13 +35,13 @@ const Header = () => {
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6">
-            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
               חיפוש מטפלים
             </Link>
-            <Link to="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
               למטפלים
             </Link>
-            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors">
+            <a href="#" className="text-muted-foreground hover:text-foreground transition-colors font-medium">
               אודות
             </a>
           </nav>
@@ -80,39 +51,40 @@ const Header = () => {
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <Button variant="outline" size="sm" className="gap-2 rounded-full px-4 border-primary/20 hover:border-primary/50 transition-colors">
                     <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center">
                       <User className="w-4 h-4 text-primary" />
                     </div>
-                    <span className="max-w-[100px] truncate">
+                    <span className="max-w-[100px] truncate font-medium">
                       {user.user_metadata?.full_name || user.email?.split("@")[0]}
                     </span>
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  {isAdmin && (
-                    <DropdownMenuItem asChild>
-                      <Link to="/admin/dashboard" className="cursor-pointer flex items-center gap-2 text-primary font-medium">
-                        <ShieldAlert className="w-4 h-4" />
-                        ניהול מערכת
-                      </Link>
-                    </DropdownMenuItem>
-                  )}
-                  <DropdownMenuItem asChild>
-                    <Link to="/dashboard" className="cursor-pointer flex items-center gap-2">
+                <DropdownMenuContent align="end" className="w-56 p-2">
+                  <div className="px-2 py-1.5 mb-1">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">החשבון שלי</p>
+                  </div>
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-md focus:bg-primary/5 focus:text-primary mb-1">
+                    <Link to="/dashboard" className="flex items-center gap-2">
                       <LayoutDashboard className="w-4 h-4" />
-                      לוח בקרה
+                      <span>לוח בקרה</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer text-destructive flex items-center gap-2">
+                  <DropdownMenuItem asChild className="cursor-pointer rounded-md focus:bg-primary/5 focus:text-primary">
+                    <Link to={`/therapist/${user.id}`} className="flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      <span>פרופיל אישי</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator className="my-2" />
+                  <DropdownMenuItem onClick={handleSignOut} className="cursor-pointer rounded-md text-destructive focus:bg-destructive/5 focus:text-destructive">
                     <LogOut className="w-4 h-4" />
-                    התנתק
+                    <span className="mr-auto">התנתק</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             ) : (
-              <Button variant="ghost" size="sm" asChild>
+              <Button size="sm" className="rounded-full px-6" asChild>
                 <Link to="/auth">כניסת מטפלים</Link>
               </Button>
             )}
@@ -122,7 +94,7 @@ const Header = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="md:hidden"
+            className="md:hidden rounded-full h-10 w-10"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             <Menu className="w-5 h-5" />
@@ -131,29 +103,33 @@ const Header = () => {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-border animate-fade-in">
-            <nav className="flex flex-col gap-3">
-              <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors py-2">
+          <div className="md:hidden py-4 border-t border-border animate-in slide-in-from-top-4 duration-200" dir="rtl">
+            <nav className="flex flex-col gap-2">
+              <Link to="/" className="text-foreground hover:text-primary transition-colors py-3 px-2 rounded-lg hover:bg-muted/50 font-medium">
                 חיפוש מטפלים
               </Link>
-              <Link to="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors py-2">
+              <Link to="/dashboard" className="text-foreground hover:text-primary transition-colors py-3 px-2 rounded-lg hover:bg-muted/50 font-medium">
                 למטפלים
               </Link>
-              <a href="#" className="text-muted-foreground hover:text-foreground transition-colors py-2">
+              <a href="#" className="text-foreground hover:text-primary transition-colors py-3 px-2 rounded-lg hover:bg-muted/50 font-medium">
                 אודות
               </a>
-              <div className="flex gap-2 pt-2">
+              <div className="pt-4 border-t mt-2">
                 {user ? (
-                  <>
-                    <Button variant="outline" size="sm" className="flex-1" asChild>
-                      <Link to="/dashboard">לוח בקרה</Link>
+                  <div className="flex flex-col gap-2">
+                    <Button variant="outline" className="justify-start gap-2" asChild>
+                      <Link to="/dashboard">
+                        <LayoutDashboard className="w-4 h-4" />
+                        לוח בקרה
+                      </Link>
                     </Button>
-                    <Button variant="ghost" size="sm" className="flex-1" onClick={handleSignOut}>
+                    <Button variant="ghost" className="justify-start gap-2 text-destructive hover:bg-destructive/5 hover:text-destructive" onClick={handleSignOut}>
+                      <LogOut className="w-4 h-4 text-destructive" />
                       התנתק
                     </Button>
-                  </>
+                  </div>
                 ) : (
-                  <Button variant="ghost" size="sm" className="flex-1" asChild>
+                  <Button className="w-full" asChild>
                     <Link to="/auth">כניסת מטפלים</Link>
                   </Button>
                 )}
